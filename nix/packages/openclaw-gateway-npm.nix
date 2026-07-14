@@ -47,6 +47,7 @@ buildNpmPackageForOpenClaw {
     OPENCLAW_NPM_PACKAGE_ROOT = "node_modules/openclaw";
     OPENCLAW_PATCH_NPM_DIST_SCRIPT = "${../scripts/patch-openclaw-npm-dist.mjs}";
     OPENCLAW_LOCAL_PATCH_NPM_DIST_SCRIPT = "${../scripts/patch-openclaw-local-npm-dist.mjs}";
+    OPENCLAW_RETRY_PATCH_NPM_DIST_SCRIPT = "${../scripts/patch-openclaw-retry-npm-dist.mjs}";
     STDENV_SETUP = "${stdenv}/setup";
   };
 

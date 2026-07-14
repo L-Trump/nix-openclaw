@@ -21,6 +21,10 @@ if [ -z "${OPENCLAW_LOCAL_PATCH_NPM_DIST_SCRIPT:-}" ] || [ ! -f "$OPENCLAW_LOCAL
   echo "OPENCLAW_LOCAL_PATCH_NPM_DIST_SCRIPT is not set or missing" >&2
   exit 1
 fi
+if [ -z "${OPENCLAW_RETRY_PATCH_NPM_DIST_SCRIPT:-}" ] || [ ! -f "$OPENCLAW_RETRY_PATCH_NPM_DIST_SCRIPT" ]; then
+  echo "OPENCLAW_RETRY_PATCH_NPM_DIST_SCRIPT is not set or missing" >&2
+  exit 1
+fi
 
 package_root="${OPENCLAW_NPM_PACKAGE_ROOT:-node_modules/openclaw}"
 if [ ! -d "$package_root" ]; then
@@ -41,6 +45,8 @@ log_step "patch npm dist"
 OPENCLAW_PACKAGE_ROOT="$root" "$NODE_BIN" "$OPENCLAW_PATCH_NPM_DIST_SCRIPT"
 log_step "apply local npm dist compatibility patches"
 OPENCLAW_PACKAGE_ROOT="$root" "$NODE_BIN" "$OPENCLAW_LOCAL_PATCH_NPM_DIST_SCRIPT"
+log_step "apply Codex-style request and replay-safe stream retry patches"
+OPENCLAW_PACKAGE_ROOT="$root" "$NODE_BIN" "$OPENCLAW_RETRY_PATCH_NPM_DIST_SCRIPT"
 
 check_no_broken_symlinks() {
   check_root="$1"
