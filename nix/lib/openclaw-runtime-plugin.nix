@@ -69,6 +69,10 @@ let
   safeName = lib.replaceStrings [ "@" "/" ":" ] [ "" "-" "-" ] lock.id;
   packageName = "openclaw-runtime-plugin-${safeName}";
   peerLinkIsValid = !linkOpenClawPeer || openclawPackage != null;
+  runtimeDistPatchScripts = {
+    feishu = ../scripts/patch-feishu-runtime-plugin-dist.mjs;
+  };
+  runtimeDistPatchScript = runtimeDistPatchScripts.${lock.id} or null;
 
   drv = stdenvNoCC.mkDerivation (
     {
@@ -127,7 +131,14 @@ let
         OPENCLAW_RUNTIME_PLUGIN_PEER_OPENCLAW = lock.peerOpenClaw;
       };
 
-      installPhase = "${nodejs_22}/bin/node ${../scripts/openclaw-runtime-plugin-install.mjs}";
+      installPhase =
+        if runtimeDistPatchScript == null then
+          "${nodejs_22}/bin/node ${../scripts/openclaw-runtime-plugin-install.mjs}"
+        else
+          ''
+            ${nodejs_22}/bin/node ${../scripts/openclaw-runtime-plugin-install.mjs}
+            ${nodejs_22}/bin/node ${runtimeDistPatchScript} "$out"
+          '';
 
       passthru.openclawRuntimePlugin = {
         inherit (lock) id;
