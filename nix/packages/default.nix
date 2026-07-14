@@ -44,7 +44,8 @@ let
   };
 in
 {
-  inherit pnpm_11;
+  # Keep the pinned pnpm_11 package internal so the overlay does not override nixpkgs' pnpm_11.
+  # inherit pnpm_11;
   inherit openclawRuntimePlugins;
   qmd = qmdPackage;
   openclaw-gateway = openclawGateway;
