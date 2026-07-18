@@ -1,0 +1,36 @@
+diff --git a/src/plugins/installed-plugin-index-record-reader.ts b/src/plugins/installed-plugin-index-record-reader.ts
+index 0c3ff1443..412df1584 100644
+--- a/src/plugins/installed-plugin-index-record-reader.ts
++++ b/src/plugins/installed-plugin-index-record-reader.ts
+@@ -21,5 +21,12 @@ import { listManagedPluginNpmProjectRootsSync } from "./npm-project-roots.js";
+ export { clearLoadInstalledPluginIndexInstallRecordsCache } from "./installed-plugin-index-record-cache.js";
+-
++
++const DISABLE_PERSISTED_PLUGIN_REGISTRY_ENV = "OPENCLAW_DISABLE_PERSISTED_PLUGIN_REGISTRY";
++
++function shouldDisablePersistedPluginInstallRecords(env: NodeJS.ProcessEnv): boolean {
++  const value = env[DISABLE_PERSISTED_PLUGIN_REGISTRY_ENV]?.trim().toLowerCase();
++  return Boolean(value && value !== "0" && value !== "false" && value !== "no");
++}
++
+ function cloneInstallRecords(
+   records: Record<string, PluginInstallRecord> | undefined,
+ ): Record<string, PluginInstallRecord> {
+@@ -320,5 +327,8 @@ export async function loadInstalledPluginIndexInstallRecords(
+   params: InstalledPluginIndexStoreOptions = {},
+ ): Promise<Record<string, PluginInstallRecord>> {
++  if (shouldDisablePersistedPluginInstallRecords(params.env ?? process.env)) {
++    return {};
++  }
+   const cacheKey = resolveInstallRecordsCacheKey(params);
+   const cached = getInstalledPluginIndexInstallRecordsCache(cacheKey);
+   if (cached) {
+@@ -344,5 +354,8 @@ export function loadInstalledPluginIndexInstallRecordsSync(
+   params: InstalledPluginIndexStoreOptions = {},
+ ): Record<string, PluginInstallRecord> {
++  if (shouldDisablePersistedPluginInstallRecords(params.env ?? process.env)) {
++    return {};
++  }
+   const cacheKey = resolveInstallRecordsCacheKey(params);
+   const cached = getInstalledPluginIndexInstallRecordsCache(cacheKey);
+   if (cached) {

@@ -134,3 +134,52 @@ if (missingConfiguredInstallSource.includes(legacyPatchedMissingConfiguredInstal
 }
 
 fs.writeFileSync(missingConfiguredInstallFile, missingConfiguredInstallSource);
+
+const installRecordReaderFiles = jsFiles.filter((file) => {
+  const candidate = fs.readFileSync(file, "utf8");
+  return (
+    candidate.includes("async function loadInstalledPluginIndexInstallRecords(params = {})") &&
+    candidate.includes("function loadInstalledPluginIndexInstallRecordsSync(params = {})")
+  );
+});
+
+if (installRecordReaderFiles.length !== 1) {
+  fail(
+    `expected exactly one installed plugin record reader chunk, found ${installRecordReaderFiles.length}`,
+  );
+}
+
+const installRecordReaderFile = installRecordReaderFiles[0];
+let installRecordReaderSource = fs.readFileSync(installRecordReaderFile, "utf8");
+const disablePersistedRecordsHelper = `const DISABLE_PERSISTED_PLUGIN_REGISTRY_ENV = "OPENCLAW_DISABLE_PERSISTED_PLUGIN_REGISTRY";
+function shouldDisablePersistedPluginInstallRecords(env) {
+\tconst value = env[DISABLE_PERSISTED_PLUGIN_REGISTRY_ENV]?.trim().toLowerCase();
+\treturn Boolean(value && value !== "0" && value !== "false" && value !== "no");
+}
+`;
+const asyncInstallRecordReader = "async function loadInstalledPluginIndexInstallRecords(params = {}) {\n";
+const syncInstallRecordReader = "function loadInstalledPluginIndexInstallRecordsSync(params = {}) {\n";
+const disabledRecordsGuard =
+  "\tif (shouldDisablePersistedPluginInstallRecords(params.env ?? process.env)) return {};\n";
+
+if (!installRecordReaderSource.includes(disablePersistedRecordsHelper)) {
+  installRecordReaderSource = installRecordReaderSource.replace(
+    asyncInstallRecordReader,
+    `${disablePersistedRecordsHelper}${asyncInstallRecordReader}`,
+  );
+}
+for (const marker of [asyncInstallRecordReader, syncInstallRecordReader]) {
+  const patchedMarker = `${marker}${disabledRecordsGuard}`;
+  if (!installRecordReaderSource.includes(patchedMarker)) {
+    installRecordReaderSource = installRecordReaderSource.replace(marker, patchedMarker);
+  }
+}
+
+if (!installRecordReaderSource.includes(disablePersistedRecordsHelper)) {
+  fail("installed plugin record reader chunk did not receive the disable helper");
+}
+if (installRecordReaderSource.split(disabledRecordsGuard).length - 1 !== 2) {
+  fail("installed plugin record reader chunk did not receive both disable guards");
+}
+
+fs.writeFileSync(installRecordReaderFile, installRecordReaderSource);

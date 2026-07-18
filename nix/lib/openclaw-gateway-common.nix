@@ -43,6 +43,7 @@ let
     "releaseVersion"
     "applyPublicSurfaceHardlinksPatch"
     "applySkipPluginAutoEnableNixModePatch"
+    "applyDisablePersistedPluginInstallsPatch"
     "applyNixStorePluginOwnershipPatch"
     "publicSurfaceHardlinksPatch"
     "fsSafeSource"
@@ -139,6 +140,11 @@ let
     PATCH_SKIP_PLUGIN_AUTO_ENABLE_NIX_MODE =
       if sourceInfo.applySkipPluginAutoEnableNixModePatch or true then
         "${../patches/skip-plugin-auto-enable-persist-in-nix-mode.patch}"
+      else
+        "";
+    PATCH_DISABLE_PERSISTED_PLUGIN_INSTALLS =
+      if sourceInfo.applyDisablePersistedPluginInstallsPatch or true then
+        "${../patches/disable-persisted-plugin-installs.patch}"
       else
         "";
     PATCH_NIX_STORE_PLUGIN_OWNERSHIP =

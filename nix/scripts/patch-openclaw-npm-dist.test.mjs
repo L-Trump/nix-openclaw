@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import test from "node:test";
 import { spawnSync } from "node:child_process";
 
@@ -11,6 +12,7 @@ function makeFixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-dist-patch-"));
   const dist = path.join(root, "dist");
   fs.mkdirSync(dist);
+  fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ type: "module" }));
   fs.writeFileSync(
     path.join(dist, "hardlink-policy-EgX5ySNS.js"),
     `import { p as resolveIsNixMode } from "./paths-BMBAvkNf.js";
@@ -68,11 +70,26 @@ async function repairMissingPluginInstalls(params) {
 export { repairMissingPluginInstalls };
 `,
   );
-  return { root, discoveryPath, missingInstallPath };
+  const installRecordReaderPath = path.join(
+    dist,
+    "installed-plugin-index-record-reader-CrcykudU.js",
+  );
+  fs.writeFileSync(
+    installRecordReaderPath,
+    `async function loadInstalledPluginIndexInstallRecords(params = {}) {
+\treturn { stale: { source: "npm" } };
+}
+function loadInstalledPluginIndexInstallRecordsSync(params = {}) {
+\treturn { stale: { source: "npm" } };
+}
+export { loadInstalledPluginIndexInstallRecords, loadInstalledPluginIndexInstallRecordsSync };
+`,
+  );
+  return { root, discoveryPath, missingInstallPath, installRecordReaderPath };
 }
 
-test("patches ownership check when hardlink policy lives in a separate chunk", () => {
-  const { root, discoveryPath, missingInstallPath } = makeFixture();
+test("patches Nix-owned plugin discovery and persisted install behavior", async () => {
+  const { root, discoveryPath, missingInstallPath, installRecordReaderPath } = makeFixture();
   const result = spawnSync(process.execPath, [script], {
     env: { ...process.env, OPENCLAW_PACKAGE_ROOT: root },
     encoding: "utf8",
@@ -94,4 +111,18 @@ test("patches ownership check when hardlink policy lives in a separate chunk", (
     2,
   );
   assert.equal(missingInstallPatched.includes("\n\tfor (const candidate of collectDownloadableInstallCandidates({"), false);
+
+  const recordReader = await import(pathToFileURL(installRecordReaderPath).href);
+  const disabledEnv = { OPENCLAW_DISABLE_PERSISTED_PLUGIN_REGISTRY: "1" };
+  assert.deepEqual(
+    await recordReader.loadInstalledPluginIndexInstallRecords({ env: disabledEnv }),
+    {},
+  );
+  assert.deepEqual(recordReader.loadInstalledPluginIndexInstallRecordsSync({ env: disabledEnv }), {});
+  assert.deepEqual(
+    await recordReader.loadInstalledPluginIndexInstallRecords({
+      env: { OPENCLAW_DISABLE_PERSISTED_PLUGIN_REGISTRY: "0" },
+    }),
+    { stale: { source: "npm" } },
+  );
 });

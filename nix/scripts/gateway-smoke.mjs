@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { once } from "node:events";
 import { spawn, spawnSync } from "node:child_process";
+import { DatabaseSync } from "node:sqlite";
 
 const gatewayPackage = process.env.OPENCLAW_GATEWAY;
 const runtimePluginSmokeRoot = process.env.OPENCLAW_RUNTIME_PLUGIN_SMOKE_ROOT;
@@ -70,6 +71,7 @@ function isolatedEnv() {
     OPENCLAW_CONFIG_PATH: path.join(tmpDir, "state", "openclaw.json"),
     OPENCLAW_STATE_DIR: path.join(tmpDir, "state"),
     OPENCLAW_LOG_DIR: path.join(tmpDir, "logs"),
+    OPENCLAW_DISABLE_PERSISTED_PLUGIN_REGISTRY: "1",
     OPENCLAW_NIX_MODE: "1",
     NO_COLOR: "1",
   };
@@ -88,9 +90,151 @@ function isolatedEnv() {
   return env;
 }
 
+function spawnGateway(port) {
+  const child = spawn(
+    openclaw,
+    [
+      "gateway",
+      "run",
+      "--allow-unconfigured",
+      "--bind",
+      "loopback",
+      "--port",
+      String(port),
+      "--auth",
+      "token",
+      "--token",
+      token,
+      "--ws-log",
+      "compact",
+    ],
+    {
+      cwd: tmpDir,
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  child.stdout.on("data", (chunk) => appendLog("stdout", chunk));
+  child.stderr.on("data", (chunk) => appendLog("stderr", chunk));
+  return child;
+}
+
+async function waitForGatewayHealth(child, port) {
+  const deadline = Date.now() + (runtimePluginSmokeRoot ? 90000 : 30000);
+  let lastError = "";
+
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      throw new Error(`gateway exited before health check: ${child.exitCode ?? child.signalCode}`);
+    }
+
+    const health = spawnSync(
+      openclaw,
+      [
+        "gateway",
+        "health",
+        "--url",
+        `ws://127.0.0.1:${port}`,
+        "--token",
+        token,
+        "--json",
+        "--timeout",
+        "3000",
+      ],
+      {
+        cwd: tmpDir,
+        env,
+        encoding: "utf8",
+      },
+    );
+
+    if (health.status === 0) {
+      let parsed;
+      try {
+        parsed = JSON.parse(health.stdout);
+      } catch {
+        lastError = `health returned invalid JSON: ${health.stdout}${health.stderr}`;
+        await sleep(500);
+        continue;
+      }
+
+      if (parsed?.ok === true) {
+        if (runtimePluginSmokeRoot) {
+          const loadedPlugins = parsed.plugins?.loaded ?? [];
+          if (!loadedPlugins.includes(runtimePluginSmokeId)) {
+            throw new Error(
+              `gateway health did not report Nix-managed ${runtimePluginSmokeId} loaded: ${JSON.stringify(parsed.plugins ?? {})}`,
+            );
+          }
+        }
+        return;
+      }
+      lastError = `health JSON did not contain ok=true: ${health.stdout}`;
+    } else {
+      lastError = `${health.stdout}${health.stderr}`;
+    }
+
+    await sleep(500);
+  }
+
+  throw new Error(`gateway health did not become ready: ${lastError.trim()}`);
+}
+
+function injectStalePluginInstallRecord() {
+  const databasePath = path.join(env.OPENCLAW_STATE_DIR, "state", "openclaw.sqlite");
+  const database = new DatabaseSync(databasePath);
+  const now = Date.now();
+  const installRecords = {
+    qqbot: {
+      source: "npm",
+      spec: "@openclaw/qqbot@2026.7.1",
+      installPath: path.join(tmpDir, "missing-qqbot"),
+      version: "2026.7.1",
+      resolvedName: "@openclaw/qqbot",
+      resolvedVersion: "2026.7.1",
+      resolvedSpec: "@openclaw/qqbot@2026.7.1",
+    },
+  };
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    database
+      .prepare(
+        `INSERT INTO installed_plugin_index (
+          index_key, version, host_contract_version, compat_registry_version,
+          migration_version, policy_hash, generated_at_ms, refresh_reason,
+          install_records_json, plugins_json, diagnostics_json, warning, updated_at_ms
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(index_key) DO UPDATE SET
+          install_records_json = excluded.install_records_json,
+          updated_at_ms = excluded.updated_at_ms`,
+      )
+      .run(
+        "installed-plugin-index",
+        1,
+        "smoke",
+        "smoke",
+        1,
+        "smoke",
+        now,
+        "smoke",
+        JSON.stringify(installRecords),
+        "[]",
+        "[]",
+        null,
+        now,
+      );
+    database.prepare("DELETE FROM schema_meta WHERE meta_key = ?").run("startup-migrations");
+    database.exec("COMMIT");
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  } finally {
+    database.close();
+  }
+}
+
 const env = isolatedEnv();
 let gateway = null;
-let gatewayHealthy = false;
 
 try {
   const version = spawnSync(openclaw, ["--version"], {
@@ -128,95 +272,15 @@ try {
     );
   }
 
-  gateway = spawn(
-    openclaw,
-    [
-      "gateway",
-      "run",
-      "--allow-unconfigured",
-      "--bind",
-      "loopback",
-      "--port",
-      String(port),
-      "--auth",
-      "token",
-      "--token",
-      token,
-      "--ws-log",
-      "compact",
-    ],
-    {
-      cwd: tmpDir,
-      env,
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
+  gateway = spawnGateway(port);
+  await waitForGatewayHealth(gateway, port);
+  await stopProcess(gateway);
+  gateway = null;
 
-  gateway.stdout.on("data", (chunk) => appendLog("stdout", chunk));
-  gateway.stderr.on("data", (chunk) => appendLog("stderr", chunk));
-
-  const deadline = Date.now() + (runtimePluginSmokeRoot ? 90000 : 30000);
-  let lastError = "";
-
-  while (Date.now() < deadline) {
-    if (gateway.exitCode !== null || gateway.signalCode !== null) {
-      throw new Error(`gateway exited before health check: ${gateway.exitCode ?? gateway.signalCode}`);
-    }
-
-    const health = spawnSync(
-      openclaw,
-      [
-        "gateway",
-        "health",
-        "--url",
-        `ws://127.0.0.1:${port}`,
-        "--token",
-        token,
-        "--json",
-        "--timeout",
-        "3000",
-      ],
-      {
-        cwd: tmpDir,
-        env,
-        encoding: "utf8",
-      },
-    );
-
-    if (health.status === 0) {
-      let parsed;
-      try {
-        parsed = JSON.parse(health.stdout);
-      } catch (err) {
-        lastError = `health returned invalid JSON: ${health.stdout}${health.stderr}`;
-        await sleep(500);
-        continue;
-      }
-
-      if (parsed?.ok === true) {
-        if (runtimePluginSmokeRoot) {
-          const loadedPlugins = parsed.plugins?.loaded ?? [];
-          if (!loadedPlugins.includes(runtimePluginSmokeId)) {
-            throw new Error(
-              `gateway health did not report Nix-managed ${runtimePluginSmokeId} loaded: ${JSON.stringify(parsed.plugins ?? {})}`,
-            );
-          }
-        }
-        console.log(`openclaw gateway smoke: ok (${version.stdout.trim()})`);
-        gatewayHealthy = true;
-        break;
-      }
-      lastError = `health JSON did not contain ok=true: ${health.stdout}`;
-    } else {
-      lastError = `${health.stdout}${health.stderr}`;
-    }
-
-    await sleep(500);
-  }
-
-  if (!gatewayHealthy) {
-    throw new Error(`gateway health did not become ready: ${lastError.trim()}`);
-  }
+  injectStalePluginInstallRecord();
+  gateway = spawnGateway(port);
+  await waitForGatewayHealth(gateway, port);
+  console.log(`openclaw gateway smoke: ok (${version.stdout.trim()})`);
 } catch (err) {
   console.error(String(err));
   if (logs.stdout.trim()) {
