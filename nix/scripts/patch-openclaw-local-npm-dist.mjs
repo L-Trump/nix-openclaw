@@ -105,6 +105,135 @@ if (
 }
 writeText(thinkingFile, source);
 
+const modelSelectionSharedFile = findSingleDistFile(
+  distDir,
+  /^model-selection-shared-[A-Za-z0-9_-]+\.js$/,
+  (candidate) =>
+    candidate.includes("function buildConfiguredModelCatalog") &&
+    candidate.includes("buildConfiguredModelCatalog as r"),
+  "configured model catalog chunk",
+);
+const configuredModelCatalogImport = `import { r as buildConfiguredModelCatalog } from "./${path.basename(modelSelectionSharedFile)}";`;
+
+const thinkingRuntimeFile = findSingleDistFile(
+  distDir,
+  /^thinking-runtime-[A-Za-z0-9_-]+\.js$/,
+  (candidate) =>
+    candidate.includes("function resolveCandidateThinkingLevel") &&
+    candidate.includes("isThinkingLevelSupported(policy)"),
+  "candidate thinking-level runtime chunk",
+);
+source = readText(thinkingRuntimeFile);
+
+if (!source.includes(configuredModelCatalogImport)) {
+  const thinkingImport = source
+    .split("\n")
+    .find(
+      (line) =>
+        line.startsWith("import ") &&
+        line.includes("isThinkingLevelSupported") &&
+        line.includes("resolveSupportedThinkingLevel") &&
+        line.includes("./thinking-"),
+    );
+  if (!thinkingImport) {
+    fail("candidate thinking-level runtime chunk is missing its thinking profile import");
+  }
+  source = replaceOnce(
+    source,
+    `${thinkingImport}\n`,
+    `${thinkingImport}\n${configuredModelCatalogImport}\n`,
+    "configured model catalog import for candidate thinking-level resolution",
+  );
+}
+
+if (!source.includes("const catalog = params.catalog ?? buildConfiguredModelCatalog({ cfg: params.cfg ?? {} });")) {
+  source = replaceOnce(
+    source,
+    `\tconst policy = {
+\t\tprovider: params.provider,
+\t\tmodel: params.modelId,
+\t\tlevel: params.level,
+\t\tcatalog: params.catalog,
+\t\tagentRuntime
+\t};`,
+    `\tconst catalog = params.catalog ?? buildConfiguredModelCatalog({ cfg: params.cfg ?? {} });
+\tconst policy = {
+\t\tprovider: params.provider,
+\t\tmodel: params.modelId,
+\t\tlevel: params.level,
+\t\tcatalog,
+\t\tagentRuntime
+\t};`,
+    "configured catalog fallback for candidate thinking-level resolution",
+  );
+}
+
+if (!source.includes(configuredModelCatalogImport)) {
+  fail("candidate thinking-level runtime chunk did not receive the configured catalog import");
+}
+if (!source.includes("const catalog = params.catalog ?? buildConfiguredModelCatalog({ cfg: params.cfg ?? {} });")) {
+  fail("candidate thinking-level runtime chunk did not receive the configured catalog fallback");
+}
+writeText(thinkingRuntimeFile, source);
+
+const statusTextFile = findSingleDistFile(
+  distDir,
+  /^status-text-[A-Za-z0-9_-]+\.js$/,
+  (candidate) =>
+    candidate.includes("async function buildStatusText") &&
+    candidate.includes("const effectiveThinkLevel = resolveSupportedThinkingLevel"),
+  "status thinking-level projection chunk",
+);
+source = readText(statusTextFile);
+
+if (!source.includes(configuredModelCatalogImport)) {
+  const thinkingImport = source
+    .split("\n")
+    .find(
+      (line) =>
+        line.startsWith("import ") &&
+        line.includes("resolveSupportedThinkingLevel") &&
+        line.includes("./thinking-"),
+    );
+  if (!thinkingImport) {
+    fail("status thinking-level projection chunk is missing its thinking profile import");
+  }
+  source = replaceOnce(
+    source,
+    `${thinkingImport}\n`,
+    `${thinkingImport}\n${configuredModelCatalogImport}\n`,
+    "configured model catalog import for status thinking-level projection",
+  );
+}
+
+if (!source.includes("catalog: buildConfiguredModelCatalog({ cfg }),")) {
+  source = replaceOnce(
+    source,
+    `\tconst effectiveThinkLevel = resolveSupportedThinkingLevel({
+\t\tprovider: selectedLookupProvider,
+\t\tmodel: selectedLookupModel,
+\t\tlevel: resolvedThinkLevel ?? explicitThinkingDefault ?? await resolveDefaultThinkingLevel() ?? sessionEntry?.thinkingLevel ?? "off",
+\t\tagentRuntime: effectiveHarness
+\t});`,
+    `\tconst effectiveThinkLevel = resolveSupportedThinkingLevel({
+\t\tprovider: selectedLookupProvider,
+\t\tmodel: selectedLookupModel,
+\t\tlevel: resolvedThinkLevel ?? explicitThinkingDefault ?? await resolveDefaultThinkingLevel() ?? sessionEntry?.thinkingLevel ?? "off",
+\t\tcatalog: buildConfiguredModelCatalog({ cfg }),
+\t\tagentRuntime: effectiveHarness
+\t});`,
+    "configured catalog for status thinking-level projection",
+  );
+}
+
+if (!source.includes(configuredModelCatalogImport)) {
+  fail("status thinking-level projection chunk did not receive the configured catalog import");
+}
+if (!source.includes("catalog: buildConfiguredModelCatalog({ cfg }),")) {
+  fail("status thinking-level projection chunk did not receive the configured catalog");
+}
+writeText(statusTextFile, source);
+
 const toolsFile = findSingleDistFile(
   distDir,
   /^openclaw-tools-[A-Za-z0-9_-]+\.js$/,
