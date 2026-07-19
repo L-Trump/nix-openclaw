@@ -49,6 +49,9 @@ buildNpmPackageForOpenClaw {
     OPENCLAW_LOCAL_PATCH_NPM_DIST_SCRIPT = "${../scripts/patch-openclaw-local-npm-dist.mjs}";
     OPENCLAW_VERIFY_LOCAL_PATCH_NPM_DIST_SCRIPT = "${../scripts/verify-openclaw-local-npm-dist.mjs}";
     OPENCLAW_RETRY_PATCH_NPM_DIST_SCRIPT = "${../scripts/patch-openclaw-retry-npm-dist.mjs}";
+    OPENCLAW_CONTEXT_BUDGET_PATCH_NPM_DIST_SCRIPT = "${
+      ../scripts/patch-openclaw-context-budget-npm-dist.mjs
+    }";
     STDENV_SETUP = "${stdenv}/setup";
   };
 

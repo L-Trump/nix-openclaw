@@ -12,6 +12,9 @@ Older repository history is available in git.
 
 ### Fixed
 
+- Corrected the OpenClaw 2026.7.1 aggregate tool-result recovery budget to use
+  the same two-characters-per-token density as the tool-loop overflow guard,
+  preventing successful compaction from immediately re-entering overflow.
 - Added immutable attestation and per-instance trust roots for official
   Nix-managed runtime plugins, allowing trusted plugin APIs such as Codex
   `openKeyedStore` without relying on mutable install records.

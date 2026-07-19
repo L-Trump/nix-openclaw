@@ -1,0 +1,73 @@
+diff --git a/src/agents/embedded-agent-runner/tool-result-truncation.test.ts b/src/agents/embedded-agent-runner/tool-result-truncation.test.ts
+index 4e75044f0..f2ff74da2 100644
+--- a/src/agents/embedded-agent-runner/tool-result-truncation.test.ts
++++ b/src/agents/embedded-agent-runner/tool-result-truncation.test.ts
+@@ -351,20 +351,33 @@ describe("calculateMaxToolResultChars", () => {
+ 
+   it.each([
+     { contextWindowTokens: 20_000, perResultMaxChars: 16_000, aggregateMaxChars: 64_000 },
+-    { contextWindowTokens: 128_000, perResultMaxChars: 32_000, aggregateMaxChars: 256_000 },
+-    { contextWindowTokens: 200_000, perResultMaxChars: 64_000, aggregateMaxChars: 400_000 },
+-    { contextWindowTokens: 1_000_000, perResultMaxChars: 64_000, aggregateMaxChars: 2_000_000 },
++    { contextWindowTokens: 128_000, perResultMaxChars: 32_000, aggregateMaxChars: 128_000 },
++    { contextWindowTokens: 200_000, perResultMaxChars: 64_000, aggregateMaxChars: 256_000 },
++    { contextWindowTokens: 1_000_000, perResultMaxChars: 64_000, aggregateMaxChars: 1_000_000 },
+   ])(
+     "resolves aggregate live cap for $contextWindowTokens token windows",
+     ({ contextWindowTokens, perResultMaxChars, aggregateMaxChars }) => {
+       expect(
+         resolveLiveToolResultAggregateMaxChars({
+           contextWindowTokens,
+           perResultMaxChars,
+         }),
+       ).toBe(aggregateMaxChars);
+     },
+   );
++
++  it("keeps aggregate tool-result pressure below the tool-loop guard", () => {
++    const contextWindowTokens = 372_000;
++    const aggregateMaxChars = resolveLiveToolResultAggregateMaxChars({
++      contextWindowTokens,
++      perResultMaxChars: 64_000,
++    });
++
++    expect(aggregateMaxChars).toBe(372_000);
++    expect(aggregateMaxChars * (4 / 2)).toBeLessThan(
++      contextWindowTokens * 4 * 0.9,
++    );
++  });
+ });
+ 
+ describe("sessionLikelyHasOversizedToolResults", () => {
+diff --git a/src/agents/embedded-agent-runner/tool-result-truncation.ts b/src/agents/embedded-agent-runner/tool-result-truncation.ts
+index 0d49a4432..e48d5f27e 100644
+--- a/src/agents/embedded-agent-runner/tool-result-truncation.ts
++++ b/src/agents/embedded-agent-runner/tool-result-truncation.ts
+@@ -19,6 +19,7 @@ import {
+ import { SessionManager } from "../sessions/index.js";
+ import { formatFullOutputFooter } from "../sessions/tools/tool-contracts.js";
+ import { formatContextLimitTruncationNotice } from "./context-truncation-notice.js";
++import { TOOL_RESULT_CHARS_PER_TOKEN_ESTIMATE } from "./tool-result-char-estimator.js";
+ import { log } from "./logger.js";
+ import type { ToolResultPromptProjectionState } from "./session-prompt-state.js";
+ import {
+@@ -311,11 +312,13 @@ export function resolveLiveToolResultAggregateMaxChars(params: {
+   const contextWindowTokens = Number.isFinite(params.contextWindowTokens)
+     ? Math.max(1, Math.floor(params.contextWindowTokens))
+     : 1;
+-  // Aggregate truncation shares the 0.5 history-pressure invariant used by
+-  // safeguard compaction and the mid-turn single-result guard. If this drifts,
+-  // truncation can hide pressure that compaction routing should see.
++  // Express the aggregate share with the same tool-result density used by the
++  // tool-loop guard. Using the ordinary 4 chars/token estimate here lets the
++  // nominal 0.5 share consume more than the guard's 0.9 limit after weighting.
+   const contextShareChars = Math.floor(
+-    contextWindowTokens * 4 * AGGREGATE_TOOL_RESULT_CONTEXT_SHARE,
++    contextWindowTokens *
++      TOOL_RESULT_CHARS_PER_TOKEN_ESTIMATE *
++      AGGREGATE_TOOL_RESULT_CONTEXT_SHARE,
+   );
+   return Math.max(
+     perResultMaxChars * PROMPT_TOOL_RESULT_AGGREGATE_CAP_MULTIPLIER,
+-- 
+2.51.0

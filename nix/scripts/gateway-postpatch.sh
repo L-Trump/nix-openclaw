@@ -29,6 +29,10 @@ if [ -n "${PATCH_TRUST_NIX_RUNTIME_PLUGINS:-}" ]; then
   patch -p1 < "$PATCH_TRUST_NIX_RUNTIME_PLUGINS"
 fi
 
+if [ -n "${PATCH_TOOL_RESULT_AGGREGATE_BUDGET:-}" ]; then
+  patch -p1 < "$PATCH_TOOL_RESULT_AGGREGATE_BUDGET"
+fi
+
 if [ -f src/logging/logger.ts ]; then
   if ! grep -q "OPENCLAW_LOG_DIR" src/logging/logger.ts; then
     sed -i 's/export const DEFAULT_LOG_DIR = "\/tmp\/openclaw";/export const DEFAULT_LOG_DIR = process.env.OPENCLAW_LOG_DIR ?? "\/tmp\/openclaw";/' src/logging/logger.ts

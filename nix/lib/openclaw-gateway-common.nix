@@ -158,6 +158,7 @@ let
         "${../patches/trust-nix-runtime-plugins.patch}"
       else
         "";
+    PATCH_TOOL_RESULT_AGGREGATE_BUDGET = "${../patches/fix-tool-result-aggregate-budget.patch}";
     PROMOTE_PNPM_INTEGRITY_SH = "${../scripts/promote-pnpm-integrity.sh}";
     REMOVE_PACKAGE_MANAGER_FIELD_SH = "${../scripts/remove-package-manager-field.sh}";
     STDENV_SETUP = "${stdenv}/setup";
