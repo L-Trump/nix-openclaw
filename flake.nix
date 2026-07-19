@@ -141,6 +141,24 @@
                 openclawGateway = packageSetStable.openclaw-gateway;
                 includeRuntimePluginSmoke = true;
               };
+              runtime-plugin-codex-gateway-smoke = pkgs.callPackage ./nix/checks/openclaw-gateway-smoke.nix {
+                openclawGateway = packageSetStable.openclaw-gateway;
+                includeRuntimePluginSmoke = true;
+                runtimePluginSmokeId = "codex";
+              };
+              runtime-plugin-codex-untrusted-gateway-smoke =
+                pkgs.callPackage ./nix/checks/openclaw-gateway-smoke.nix
+                  {
+                    openclawGateway = packageSetStable.openclaw-gateway;
+                    includeRuntimePluginSmoke = true;
+                    runtimePluginSmokeId = "codex";
+                    expectRuntimePluginTrust = false;
+                  };
+              runtime-plugin-deepseek-gateway-smoke = pkgs.callPackage ./nix/checks/openclaw-gateway-smoke.nix {
+                openclawGateway = packageSetStable.openclaw-gateway;
+                includeRuntimePluginSmoke = true;
+                runtimePluginSmokeId = "deepseek";
+              };
               runtime-plugin-locks = pkgs.callPackage ./nix/checks/openclaw-runtime-plugin-locks.nix { };
               runtime-plugin-packages = pkgs.symlinkJoin {
                 name = "openclaw-runtime-plugin-packages";
@@ -205,6 +223,9 @@
                   pluginChecks.plugin-instance
                   runtimePluginChecks.runtime-plugin-config-validity
                   runtimePluginChecks.runtime-plugin-gateway-smoke
+                  runtimePluginChecks.runtime-plugin-codex-gateway-smoke
+                  runtimePluginChecks.runtime-plugin-codex-untrusted-gateway-smoke
+                  runtimePluginChecks.runtime-plugin-deepseek-gateway-smoke
                 ];
               };
               # QMD opt-in: local memory backend only when users enable it.

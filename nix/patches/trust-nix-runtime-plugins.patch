@@ -1,0 +1,82 @@
+--- a/src/plugins/manifest-registry.ts
++++ b/src/plugins/manifest-registry.ts
+@@ -790,12 +790,79 @@
+   return normalized.startsWith(`${packageName}@`);
+ }
+
++const NIX_STORE_ROOT = "/nix/store";
++const NIX_RUNTIME_PLUGIN_ATTESTATION_FILENAME = ".openclaw-nix-runtime-plugin.json";
++
++function isTrustedOfficialNixRuntimePlugin(params: {
++  pluginId: string;
++  candidate: PluginCandidate;
++  env: NodeJS.ProcessEnv;
++}): boolean {
++  if (params.env.OPENCLAW_NIX_MODE !== "1" || params.candidate.origin !== "config") {
++    return false;
++  }
++  const packageName = params.candidate.packageName?.trim();
++  if (!packageName) {
++    return false;
++  }
++  const catalogEntry = getOfficialExternalPluginCatalogEntryForPackage(packageName);
++  if (!catalogEntry || resolveOfficialExternalPluginId(catalogEntry) !== params.pluginId) {
++    return false;
++  }
++  const rootPath = path.resolve(params.candidate.rootDir);
++  const rootRealPath = safeRealpathSync(rootPath) ?? rootPath;
++  if (
++    rootRealPath !== NIX_STORE_ROOT &&
++    !rootRealPath.startsWith(`${NIX_STORE_ROOT}${path.sep}`)
++  ) {
++    return false;
++  }
++  const trustedRoots = (params.env.OPENCLAW_NIX_RUNTIME_PLUGIN_ROOTS ?? "")
++    .split(path.delimiter)
++    .map((entry) => entry.trim())
++    .filter(Boolean)
++    .map((entry) => {
++      const resolved = resolveUserPath(entry, params.env);
++      return safeRealpathSync(resolved) ?? path.resolve(resolved);
++    });
++  if (!trustedRoots.includes(rootRealPath)) {
++    return false;
++  }
++  const attestationPath = path.join(rootRealPath, NIX_RUNTIME_PLUGIN_ATTESTATION_FILENAME);
++  const attestationRealPath = safeRealpathSync(attestationPath);
++  if (!attestationRealPath || path.dirname(attestationRealPath) !== rootRealPath) {
++    return false;
++  }
++  try {
++    const attestation = JSON.parse(fs.readFileSync(attestationRealPath, "utf8")) as {
++      schemaVersion?: unknown;
++      catalogSource?: unknown;
++      id?: unknown;
++      packageName?: unknown;
++      version?: unknown;
++    };
++    return (
++      attestation.schemaVersion === 1 &&
++      attestation.catalogSource === "official" &&
++      attestation.id === params.pluginId &&
++      attestation.packageName === packageName &&
++      typeof params.candidate.packageVersion === "string" &&
++      attestation.version === params.candidate.packageVersion.trim()
++    );
++  } catch {
++    return false;
++  }
++}
++
+ function isTrustedOfficialPluginInstall(params: {
+   pluginId: string;
+   candidate: PluginCandidate;
+   env: NodeJS.ProcessEnv;
+   installRecords: Record<string, PluginInstallRecord>;
+ }): boolean {
++  if (isTrustedOfficialNixRuntimePlugin(params)) {
++    return true;
++  }
+   if (
+     (params.candidate.origin !== "global" && params.candidate.origin !== "config") ||
+     !matchesInstalledPluginRecord({

@@ -124,3 +124,69 @@ for (const basename of ["index.js", "register.runtime.js", "runtime-api.js", "se
     throw new Error(`runtime alias is not a symlink: ${basename}`);
   }
 }
+
+const attestedRoot = fs.mkdtempSync(
+  path.join(os.tmpdir(), "openclaw-runtime-plugin-attestation-check-"),
+);
+const attestedPluginRoot = path.join(attestedRoot, "plugin");
+const attestedOut = path.join(attestedRoot, "out");
+const attestedRuntimeEntriesFile = path.join(attestedRoot, "runtime-entries");
+const attestedBundledRootsFile = path.join(attestedRoot, "bundled-roots");
+
+fs.mkdirSync(path.join(attestedPluginRoot, "dist"), { recursive: true });
+fs.writeFileSync(
+  path.join(attestedPluginRoot, "package.json"),
+  JSON.stringify(
+    {
+      name: "@openclaw/diagnostics-prometheus",
+      version: "2026.7.1",
+      openclaw: { runtimeExtensions: ["./dist/index.js"] },
+    },
+    null,
+    2,
+  ),
+);
+fs.writeFileSync(
+  path.join(attestedPluginRoot, "openclaw.plugin.json"),
+  JSON.stringify({ id: "diagnostics-prometheus" }, null, 2),
+);
+fs.writeFileSync(path.join(attestedPluginRoot, "dist/index.js"), "export default {};\n");
+fs.writeFileSync(attestedRuntimeEntriesFile, "./dist/index.js\n");
+fs.writeFileSync(attestedBundledRootsFile, "");
+
+const attestedResult = spawnSync(process.execPath, [installer], {
+  cwd: attestedPluginRoot,
+  env: {
+    ...process.env,
+    out: attestedOut,
+    OPENCLAW_RUNTIME_PLUGIN_ID: "diagnostics-prometheus",
+    OPENCLAW_RUNTIME_PLUGIN_PACKAGE_NAME: "@openclaw/diagnostics-prometheus",
+    OPENCLAW_RUNTIME_PLUGIN_VERSION: "2026.7.1",
+    OPENCLAW_RUNTIME_PLUGIN_TRUSTED_OFFICIAL: "1",
+    OPENCLAW_RUNTIME_PLUGIN_RUNTIME_ENTRIES_FILE: attestedRuntimeEntriesFile,
+    OPENCLAW_RUNTIME_PLUGIN_BUNDLED_PACKAGE_ROOTS_FILE: attestedBundledRootsFile,
+    OPENCLAW_RUNTIME_PLUGIN_DEPENDENCY_MODE: "none",
+    OPENCLAW_RUNTIME_PLUGIN_LINK_PEER_OPENCLAW: "0",
+  },
+  encoding: "utf8",
+});
+
+if (attestedResult.status !== 0) {
+  throw new Error(
+    `trusted official runtime fixture failed:
+${attestedResult.stdout}
+${attestedResult.stderr}`,
+  );
+}
+const attestation = JSON.parse(
+  fs.readFileSync(path.join(attestedOut, ".openclaw-nix-runtime-plugin.json"), "utf8"),
+);
+if (
+  attestation.schemaVersion !== 1 ||
+  attestation.catalogSource !== "official" ||
+  attestation.id !== "diagnostics-prometheus" ||
+  attestation.packageName !== "@openclaw/diagnostics-prometheus" ||
+  attestation.version !== "2026.7.1"
+) {
+  throw new Error(`unexpected Nix runtime plugin attestation: ${JSON.stringify(attestation)}`);
+}

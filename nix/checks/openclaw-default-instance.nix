@@ -178,35 +178,36 @@ let
     };
   };
   sourceOverrideConfig = generatedConfig sourceOverrideEval ".openclaw-dev/openclaw.json";
-  sourceOverrideCheck = builtins.deepSeq (requireNoAssertionFailures "source override" sourceOverrideEval) (
-    if (((sourceOverrideConfig.gateway or { }).mode or null) != "local") then
-      throw "Source override instance lost gateway.mode."
-    else if pkgs.stdenv.hostPlatform.isLinux then
-      let
-        services = sourceOverrideEval.config.systemd.user.services;
-        execStart = services.openclaw-gateway-dev.Service.ExecStart or "";
-      in
-      if !(builtins.hasAttr "openclaw-gateway-dev" services) then
-        throw "Source override instance missing systemd unit."
-      else if !(lib.hasInfix "/bin/openclaw-gateway-dev gateway --port " execStart) then
-        throw "Source override instance did not wire the dev gateway wrapper."
-      else
-        "ok"
-    else if pkgs.stdenv.hostPlatform.isDarwin then
-      let
-        agents = sourceOverrideEval.config.launchd.agents;
-        programArgs =
-          agents."com.steipete.openclaw.gateway.dev".config.ProgramArguments or [ ];
-      in
-      if !(builtins.hasAttr "com.steipete.openclaw.gateway.dev" agents) then
-        throw "Source override instance missing launchd agent."
-      else if !(lib.any (arg: lib.hasSuffix "/bin/openclaw-gateway-dev" arg) programArgs) then
-        throw "Source override instance did not wire the dev gateway wrapper."
-      else
-        "ok"
-    else
-      "ok"
-  );
+  sourceOverrideCheck =
+    builtins.deepSeq (requireNoAssertionFailures "source override" sourceOverrideEval)
+      (
+        if (((sourceOverrideConfig.gateway or { }).mode or null) != "local") then
+          throw "Source override instance lost gateway.mode."
+        else if pkgs.stdenv.hostPlatform.isLinux then
+          let
+            services = sourceOverrideEval.config.systemd.user.services;
+            execStart = services.openclaw-gateway-dev.Service.ExecStart or "";
+          in
+          if !(builtins.hasAttr "openclaw-gateway-dev" services) then
+            throw "Source override instance missing systemd unit."
+          else if !(lib.hasInfix "/bin/openclaw-gateway-dev gateway --port " execStart) then
+            throw "Source override instance did not wire the dev gateway wrapper."
+          else
+            "ok"
+        else if pkgs.stdenv.hostPlatform.isDarwin then
+          let
+            agents = sourceOverrideEval.config.launchd.agents;
+            programArgs = agents."com.steipete.openclaw.gateway.dev".config.ProgramArguments or [ ];
+          in
+          if !(builtins.hasAttr "com.steipete.openclaw.gateway.dev" agents) then
+            throw "Source override instance missing launchd agent."
+          else if !(lib.any (arg: lib.hasSuffix "/bin/openclaw-gateway-dev" arg) programArgs) then
+            throw "Source override instance did not wire the dev gateway wrapper."
+          else
+            "ok"
+        else
+          "ok"
+      );
 
   customPluginEval = moduleEval {
     customPlugins = [
@@ -520,12 +521,19 @@ let
 
   qmdMemoryEval = moduleEval {
     config.memory.backend = "qmd";
+    runtimePlugins = [ "slack" ];
   };
   qmdMemoryCheck = builtins.deepSeq (requireNoAssertionFailures "memory.backend qmd" qmdMemoryEval) (
-    if lib.any packageHasQmd qmdMemoryEval.config.home.packages then
-      "ok"
-    else
+    if !(lib.any packageHasQmd qmdMemoryEval.config.home.packages) then
       throw "memory.backend = qmd did not add QMD to the internal OpenClaw runtime."
+    else if
+      !(lib.any (
+        package: lib.hasInfix "nix-runtime-plugin-trust" (toString package)
+      ) qmdMemoryEval.config.home.packages)
+    then
+      throw "memory.backend = qmd did not compose with the Nix runtime plugin trust wrapper."
+    else
+      "ok"
   );
   qmdMemoryPackages = lib.filter packageHasQmd qmdMemoryEval.config.home.packages;
   qmdMemoryPackage = if qmdMemoryPackages == [ ] then null else builtins.head qmdMemoryPackages;
@@ -559,6 +567,7 @@ let
   runtimePluginLoadPaths = ((runtimePluginConfig.plugins or { }).load or { }).paths or [ ];
   runtimePluginEntry = ((runtimePluginConfig.plugins or { }).entries or { }).slack or { };
   runtimePluginAllow = ((runtimePluginConfig.plugins or { }).allow or [ ]);
+  runtimePluginHomePackages = map toString runtimePluginEval.config.home.packages;
   runtimePluginLaunchdEnv =
     if pkgs.stdenv.hostPlatform.isDarwin then
       runtimePluginEval.config.launchd.agents."com.steipete.openclaw.gateway".config.EnvironmentVariables
@@ -585,6 +594,8 @@ let
           throw "runtimePlugins did not merge Slack into an existing plugins.allow list."
         else if ((runtimePluginConfig.plugins or { }) ? installs) then
           throw "runtimePlugins wrote plugins.installs into generated config."
+        else if !(lib.any (lib.hasInfix "openclaw-nix-runtime-plugin-trust") runtimePluginHomePackages) then
+          throw "runtimePlugins did not install the immutable trust-root CLI wrapper."
         else if
           pkgs.stdenv.hostPlatform.isDarwin
           && ((runtimePluginLaunchdEnv.OPENCLAW_DISABLE_PERSISTED_PLUGIN_REGISTRY or null) != "1")
@@ -649,6 +660,16 @@ let
     ((runtimePluginInstanceOneConfig.plugins or { }).load or { }).paths or [ ];
   runtimePluginInstanceTwoLoadPaths =
     ((runtimePluginInstanceTwoConfig.plugins or { }).load or { }).paths or [ ];
+  runtimePluginInstancePackages = runtimePluginInstanceEval.config.home.packages;
+  runtimePluginInstanceCliPackage = builtins.head runtimePluginInstancePackages;
+  runtimePluginInstanceTrustedRoots =
+    runtimePluginInstanceCliPackage.OPENCLAW_NIX_RUNTIME_PLUGIN_ROOTS_BY_INSTANCE or { };
+  runtimePluginInstanceOneTrustedRoots = runtimePluginInstanceTrustedRoots.one or null;
+  runtimePluginInstanceTwoTrustedRoots = runtimePluginInstanceTrustedRoots.two or null;
+  runtimePluginInstanceProfile = pkgs.buildEnv {
+    name = "openclaw-runtime-plugin-multi-instance-profile";
+    paths = runtimePluginInstancePackages;
+  };
   runtimePluginInstanceCheck =
     builtins.deepSeq (requireNoAssertionFailures "runtimePlugins instances" runtimePluginInstanceEval)
       (
@@ -666,6 +687,20 @@ let
           ) runtimePluginInstanceTwoLoadPaths)
         then
           throw "Instance runtimePlugins did not support hyphenated plugin ids."
+        else if lib.length runtimePluginInstancePackages != 1 then
+          throw "Multiple OpenClaw instances installed conflicting per-instance CLI packages."
+        else if runtimePluginInstanceOneTrustedRoots != "" then
+          throw "Instance runtimePlugins leaked trusted roots into an instance that disabled runtime plugins."
+        else if runtimePluginInstanceTwoTrustedRoots == null then
+          throw "Instance runtimePlugins did not expose its immutable per-instance trusted roots."
+        else if lib.hasInfix "openclaw-runtime-plugin-slack" runtimePluginInstanceTwoTrustedRoots then
+          throw "Instance runtimePlugins leaked top-level trusted roots across instance boundaries."
+        else if !(lib.hasInfix "openclaw-runtime-plugin-discord" runtimePluginInstanceTwoTrustedRoots) then
+          throw "Instance runtimePlugins omitted its selected official trusted root."
+        else if
+          !(lib.hasInfix "openclaw-runtime-plugin-diagnostics-prometheus" runtimePluginInstanceTwoTrustedRoots)
+        then
+          throw "Instance runtimePlugins omitted a selected hyphenated official trusted root."
         else
           "ok"
       );
@@ -915,8 +950,22 @@ stdenv.mkDerivation {
     ++ lib.optional (includeQmdChecks && qmdMemoryPackage != null) qmdMemoryPackage;
   env = {
     OPENCLAW_DEFAULT_INSTANCE = checkKey;
+  }
+  // lib.optionalAttrs includePluginChecks {
+    OPENCLAW_MULTI_INSTANCE_PROFILE = runtimePluginInstanceProfile;
   };
   installPhase =
-    lib.optionalString includePluginChecks "${nodejs_22}/bin/node ${../scripts/check-openclaw-runtime-plugin-installer.mjs} ${../scripts/openclaw-runtime-plugin-install.mjs} && "
+    lib.optionalString includePluginChecks ''
+      ${nodejs_22}/bin/node ${../scripts/check-openclaw-runtime-plugin-installer.mjs} ${../scripts/openclaw-runtime-plugin-install.mjs}
+      ${lib.getExe' pkgs.coreutils "env"} -u OPENCLAW_STATE_DIR OPENCLAW_CONFIG_PATH=/tmp/.openclaw-one/openclaw.json \
+        ${runtimePluginInstanceProfile}/bin/openclaw --version >/dev/null
+      ${lib.getExe' pkgs.coreutils "env"} -u OPENCLAW_CONFIG_PATH OPENCLAW_STATE_DIR=/tmp/.openclaw-two \
+        ${runtimePluginInstanceProfile}/bin/openclaw --version >/dev/null
+      if ${lib.getExe' pkgs.coreutils "env"} -u OPENCLAW_CONFIG_PATH -u OPENCLAW_STATE_DIR \
+        ${runtimePluginInstanceProfile}/bin/openclaw --version >/dev/null 2>&1; then
+        echo "multi-instance OpenClaw CLI unexpectedly selected an instance without an explicit selector" >&2
+        exit 1
+      fi
+    ''
     + "${../scripts/empty-install.sh}";
 }

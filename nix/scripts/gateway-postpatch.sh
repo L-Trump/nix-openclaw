@@ -25,6 +25,10 @@ if [ -n "${PATCH_NIX_STORE_PLUGIN_OWNERSHIP:-}" ]; then
   patch -p1 < "$PATCH_NIX_STORE_PLUGIN_OWNERSHIP"
 fi
 
+if [ -n "${PATCH_TRUST_NIX_RUNTIME_PLUGINS:-}" ]; then
+  patch -p1 < "$PATCH_TRUST_NIX_RUNTIME_PLUGINS"
+fi
+
 if [ -f src/logging/logger.ts ]; then
   if ! grep -q "OPENCLAW_LOG_DIR" src/logging/logger.ts; then
     sed -i 's/export const DEFAULT_LOG_DIR = "\/tmp\/openclaw";/export const DEFAULT_LOG_DIR = process.env.OPENCLAW_LOG_DIR ?? "\/tmp\/openclaw";/' src/logging/logger.ts

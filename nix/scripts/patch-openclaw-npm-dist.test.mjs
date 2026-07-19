@@ -14,6 +14,14 @@ function makeFixture() {
   fs.mkdirSync(dist);
   fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ type: "module" }));
   fs.writeFileSync(
+    path.join(dist, "paths-BMBAvkNf.js"),
+    'export function p(env) { return env?.OPENCLAW_NIX_MODE === "1"; }\n',
+  );
+  fs.writeFileSync(
+    path.join(dist, "path-DILYn_gk.js"),
+    "export function f(value) { return value; }\n",
+  );
+  fs.writeFileSync(
     path.join(dist, "hardlink-policy-EgX5ySNS.js"),
     `import { p as resolveIsNixMode } from "./paths-BMBAvkNf.js";
 import { f as safeRealpathSync } from "./path-DILYn_gk.js";
@@ -37,11 +45,55 @@ export { shouldRejectHardlinkedPluginFiles as t };
     `import { f as safeRealpathSync } from "./path-DILYn_gk.js";
 import path from "node:path";
 import { t as shouldRejectHardlinkedPluginFiles } from "./hardlink-policy-EgX5ySNS.js";
-function validateOwner(params, stat) {
-\tif (params.origin !== "bundled" && params.uid !== null && typeof stat.uid === "number" && stat.uid !== params.uid && stat.uid !== 0) return false;
-\treturn shouldRejectHardlinkedPluginFiles(params);
+function currentUid(uid) {
+	return uid;
 }
-export { validateOwner };
+function checkPathStatAndPermissions(params) {
+	const stat = { uid: 65534 };
+	if (params.origin !== "bundled" && params.uid !== null && typeof stat.uid === "number" && stat.uid !== params.uid && stat.uid !== 0) return { reason: "path_suspicious_ownership" };
+	return null;
+}
+function findCandidateBlockIssue(params) {
+	return checkPathStatAndPermissions({
+		source: params.source,
+		rootDir: params.rootDir,
+		origin: params.origin,
+		uid: currentUid(params.ownershipUid)
+	});
+}
+function isUnsafePluginCandidate(params) {
+	const issue = findCandidateBlockIssue({
+		source: params.source,
+		rootDir: params.rootDir,
+		origin: params.origin,
+		ownershipUid: params.ownershipUid,
+		realpathCache: params.realpathCache
+	});
+	return Boolean(issue);
+}
+function addCandidate(params) {
+	if (isUnsafePluginCandidate({
+		source: params.source,
+		rootDir: params.rootDir,
+		origin: params.origin,
+		ownershipUid: params.ownershipUid,
+		realpathCache: params.realpathCache
+	})) return;
+	params.candidates.push(params.source);
+}
+function discoverOpenClawPlugins(params = {}) {
+	const candidates = [];
+	addCandidate({
+		candidates,
+		source: "/nix/store/fake-openclaw-runtime-plugin/index.js",
+		rootDir: "/nix/store/fake-openclaw-runtime-plugin",
+		origin: "config",
+		ownershipUid: 1000,
+		realpathCache: new Map()
+	});
+	return { candidates, diagnostics: [] };
+}
+export { discoverOpenClawPlugins };
 `,
   );
   const missingInstallPath = path.join(dist, "missing-configured-plugin-install-jsvFew4a.js");
@@ -70,6 +122,20 @@ async function repairMissingPluginInstalls(params) {
 export { repairMissingPluginInstalls };
 `,
   );
+  const manifestRegistryPath = path.join(dist, "manifest-registry-D1GWNOpI.js");
+  fs.writeFileSync(
+    manifestRegistryPath,
+    `import { f as safeRealpathSync } from "./path-DILYn_gk.js";
+import { m as resolveUserPath } from "./utils-CRO4LGEB.js";
+import { s as getOfficialExternalPluginCatalogEntryForPackage, v as resolveOfficialExternalPluginId } from "./official-external-plugin-catalog-Dxs5EUfF.js";
+import fs from "node:fs";
+import path from "node:path";
+function isTrustedOfficialPluginInstall(params) {
+	return false;
+}
+export { isTrustedOfficialPluginInstall };
+`,
+  );
   const installRecordReaderPath = path.join(
     dist,
     "installed-plugin-index-record-reader-CrcykudU.js",
@@ -85,11 +151,23 @@ function loadInstalledPluginIndexInstallRecordsSync(params = {}) {
 export { loadInstalledPluginIndexInstallRecords, loadInstalledPluginIndexInstallRecordsSync };
 `,
   );
-  return { root, discoveryPath, missingInstallPath, installRecordReaderPath };
+  return {
+    root,
+    discoveryPath,
+    missingInstallPath,
+    installRecordReaderPath,
+    manifestRegistryPath,
+  };
 }
 
 test("patches Nix-owned plugin discovery and persisted install behavior", async () => {
-  const { root, discoveryPath, missingInstallPath, installRecordReaderPath } = makeFixture();
+  const {
+    root,
+    discoveryPath,
+    missingInstallPath,
+    installRecordReaderPath,
+    manifestRegistryPath,
+  } = makeFixture();
   const result = spawnSync(process.execPath, [script], {
     env: { ...process.env, OPENCLAW_PACKAGE_ROOT: root },
     encoding: "utf8",
@@ -100,6 +178,13 @@ test("patches Nix-owned plugin discovery and persisted install behavior", async 
   assert.match(patched, /function isTrustedNixStorePluginRoot/);
   assert.match(patched, /OPENCLAW_NIX_MODE === "1"/);
   assert.match(patched, /!isTrustedNixStorePluginRoot\(params\)/);
+  const discovery = await import(pathToFileURL(discoveryPath).href);
+  assert.deepEqual(
+    discovery.discoverOpenClawPlugins({
+      env: { OPENCLAW_NIX_MODE: "1" },
+    }).candidates,
+    ["/nix/store/fake-openclaw-runtime-plugin/index.js"],
+  );
 
   const missingInstallPatched = fs.readFileSync(missingInstallPath, "utf8");
   assert.equal(
@@ -124,5 +209,16 @@ test("patches Nix-owned plugin discovery and persisted install behavior", async 
       env: { OPENCLAW_DISABLE_PERSISTED_PLUGIN_REGISTRY: "0" },
     }),
     { stale: { source: "npm" } },
+  );
+
+  const manifestRegistry = fs.readFileSync(manifestRegistryPath, "utf8");
+  assert.match(manifestRegistry, /function isTrustedOfficialNixRuntimePlugin/);
+  assert.match(manifestRegistry, /OPENCLAW_NIX_RUNTIME_PLUGIN_ROOTS/);
+  assert.match(manifestRegistry, /\.openclaw-nix-runtime-plugin\.json/);
+  assert.equal(
+    manifestRegistry.includes(
+      "function isTrustedOfficialPluginInstall(params) {\n\tif (isTrustedOfficialNixRuntimePlugin(params)) return true;",
+    ),
+    true,
   );
 });

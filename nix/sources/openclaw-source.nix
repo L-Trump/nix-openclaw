@@ -6,6 +6,7 @@
   applyPublicSurfaceHardlinksPatch = false;
   applySkipPluginAutoEnableNixModePatch = false;
   applyNixStorePluginOwnershipPatch = true;
+  applyTrustNixRuntimePluginsPatch = true;
   releaseTag = "v2026.7.1";
   releaseVersion = "2026.7.1";
   rev = "2d2ddc43d0dcf71f31283d780f9fe9ff4cc04fe4";

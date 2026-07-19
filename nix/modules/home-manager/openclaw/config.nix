@@ -160,6 +160,8 @@ let
         nixOpenClawPluginIds = [ ];
       };
       disablePersistedPluginRegistry = runtimePluginConfig.loadPaths != [ ];
+      trustedRuntimePluginRoots = runtimePluginConfig.trustedLoadPaths;
+      trustedRuntimePluginRootsEnv = lib.concatStringsSep ":" trustedRuntimePluginRoots;
       generatedPluginConfig = lib.recursiveUpdate (lib.optionalAttrs
         (runtimePluginConfig.loadPaths != [ ])
         {
@@ -231,6 +233,27 @@ let
           }
         else
           gatewayPackage;
+      trustedGatewayRuntimePackage = pkgs.symlinkJoin {
+        name = "${lib.getName gatewayRuntimePackage}-nix-runtime-plugin-trust";
+        paths = [ gatewayRuntimePackage ];
+        nativeBuildInputs = [ pkgs.makeWrapper ];
+        passthru =
+          (gatewayRuntimePackage.passthru or { })
+          // lib.optionalAttrs (gatewayRuntimePackage ? OPENCLAW_QMD_PATH) {
+            OPENCLAW_QMD_PATH = gatewayRuntimePackage.OPENCLAW_QMD_PATH;
+          }
+          // {
+            OPENCLAW_NIX_RUNTIME_PLUGIN_ROOTS = trustedRuntimePluginRootsEnv;
+          };
+        postBuild = ''
+          wrapProgram "$out/bin/openclaw" \
+            --set OPENCLAW_NIX_MODE 1 \
+            --set OPENCLAW_DISABLE_PERSISTED_PLUGIN_REGISTRY ${
+              if disablePersistedPluginRegistry then "1" else "0"
+            } \
+            --set OPENCLAW_NIX_RUNTIME_PLUGIN_ROOTS ${lib.escapeShellArg trustedRuntimePluginRootsEnv}
+        '';
+      };
       rawConfigJson = toJSONWithContext mergedConfig;
       configJson =
         if hasExecSecretFlow then lib.warn execSecretFlowWarning rawConfigJson else rawConfigJson;
@@ -276,7 +299,7 @@ let
           ) runtimeEnvAll
         )}
 
-        exec "${gatewayRuntimePackage}/bin/openclaw" "$@"
+        exec "${trustedGatewayRuntimePackage}/bin/openclaw" "$@"
       '';
       appDefaults = lib.optionalAttrs (pkgs.stdenv.hostPlatform.isDarwin && inst.appDefaults.enable) {
         attachExistingOnly = inst.appDefaults.attachExistingOnly;
@@ -297,7 +320,7 @@ let
             };
           };
 
-      package = gatewayRuntimePackage;
+      package = trustedGatewayRuntimePackage;
     in
     {
       homeFile = {
@@ -310,6 +333,8 @@ let
       };
       configFile = configFile;
       configPath = inst.configPath;
+      stateDir = inst.stateDir;
+      instanceName = name;
       codexRuntimeProfiles = codexRuntimeProfiles;
       runtimeProfile = runtimeProfile;
 
@@ -377,12 +402,70 @@ let
       package = package;
       qmdEnabled = qmdEnabled;
       runtimePluginPackages = runtimePluginConfig.packages;
+      inherit trustedRuntimePluginRoots;
       assertions = runtimePluginConfig.assertions ++ bootstrapAssertions;
       launchdLabel =
         if pkgs.stdenv.hostPlatform.isDarwin && inst.launchd.enable then inst.launchd.label else null;
     };
 
   instanceConfigs = lib.mapAttrsToList mkInstanceConfig enabledInstances;
+  trustedRuntimePluginRootsByInstance = lib.listToAttrs (
+    map (item: {
+      name = item.instanceName;
+      value = lib.concatStringsSep ":" item.trustedRuntimePluginRoots;
+    }) instanceConfigs
+  );
+  defaultCliInstance = lib.findFirst (item: item.instanceName == "default") null instanceConfigs;
+  multiInstanceCliPackage =
+    let
+      dispatchEntries = lib.concatStringsSep "\n" (
+        map (item: ''
+          if { [ -n "$selectedConfig" ] && [ "$selectedConfig" = ${lib.escapeShellArg item.configPath} ]; } || \
+             { [ -n "$selectedState" ] && [ "$selectedState" = ${lib.escapeShellArg item.stateDir} ]; }; then
+            if [ -n "$selectedConfig" ] && [ "$selectedConfig" != ${lib.escapeShellArg item.configPath} ]; then
+              echo "openclaw: OPENCLAW_CONFIG_PATH and OPENCLAW_STATE_DIR select different Nix-managed instances" >&2
+              exit 64
+            fi
+            if [ -n "$selectedState" ] && [ "$selectedState" != ${lib.escapeShellArg item.stateDir} ]; then
+              echo "openclaw: OPENCLAW_CONFIG_PATH and OPENCLAW_STATE_DIR select different Nix-managed instances" >&2
+              exit 64
+            fi
+            export OPENCLAW_CONFIG_PATH=${lib.escapeShellArg item.configPath}
+            export OPENCLAW_STATE_DIR=${lib.escapeShellArg item.stateDir}
+            exec ${item.package}/bin/openclaw "$@"
+          fi
+        '') instanceConfigs
+      );
+      defaultDispatch = lib.optionalString (defaultCliInstance != null) ''
+        if [ -z "$selectedConfig" ] && [ -z "$selectedState" ]; then
+          export OPENCLAW_CONFIG_PATH=${lib.escapeShellArg defaultCliInstance.configPath}
+          export OPENCLAW_STATE_DIR=${lib.escapeShellArg defaultCliInstance.stateDir}
+          exec ${defaultCliInstance.package}/bin/openclaw "$@"
+        fi
+      '';
+      package = pkgs.writeShellScriptBin "openclaw" ''
+        set -eu
+        selectedConfig="''${OPENCLAW_CONFIG_PATH:-}"
+        selectedState="''${OPENCLAW_STATE_DIR:-}"
+
+        ${dispatchEntries}
+        ${defaultDispatch}
+        echo "openclaw: select a Nix-managed instance with OPENCLAW_CONFIG_PATH or OPENCLAW_STATE_DIR" >&2
+        exit 64
+      '';
+    in
+    package.overrideAttrs (old: {
+      passthru = (old.passthru or { }) // {
+        OPENCLAW_NIX_RUNTIME_PLUGIN_ROOTS_BY_INSTANCE = trustedRuntimePluginRootsByInstance;
+      };
+    });
+  homeCliPackage =
+    if instanceConfigs == [ ] then
+      null
+    else if lib.length instanceConfigs == 1 then
+      (builtins.head instanceConfigs).package
+    else
+      multiInstanceCliPackage;
   codexRuntimeProfileEntries = lib.flatten (
     map (
       item:
@@ -434,7 +517,7 @@ in
     ];
 
     home.packages = lib.unique (
-      (map (item: item.package) instanceConfigs)
+      (lib.optional (homeCliPackage != null) homeCliPackage)
       ++ (lib.optionals cfg.exposePluginPackages plugins.pluginPackagesAll)
     );
 

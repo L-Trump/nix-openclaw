@@ -114,6 +114,7 @@ let
 
   configPathKey = ".openclaw/openclaw.json";
   configFile = moduleEval.config.home.file."${configPathKey}".source;
+  runtimeGatewayPackage = builtins.head moduleEval.config.home.packages;
   expectedWorkspace = "/tmp/openclaw-explicit-workspace";
 
 in
@@ -139,8 +140,12 @@ stdenv.mkDerivation {
     OPENCLAW_GATEWAY = openclawGateway;
     OPENCLAW_EXPECTED_WORKSPACE = expectedWorkspace;
   }
+  // {
+    OPENCLAW_WRAPPED_GATEWAY = runtimeGatewayPackage;
+  }
   // lib.optionalAttrs includeRuntimePluginSmoke {
     OPENCLAW_RUNTIME_PLUGIN_SMOKE_ID = runtimePluginSmokeId;
+    OPENCLAW_RUNTIME_PLUGIN_SMOKE_ROOT = "${pkgs.openclawRuntimePlugins.${runtimePluginSmokeId}}";
   };
 
   doCheck = true;

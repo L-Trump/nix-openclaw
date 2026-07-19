@@ -10,6 +10,7 @@ import { DatabaseSync } from "node:sqlite";
 
 const gatewayPackage = process.env.OPENCLAW_GATEWAY;
 const runtimePluginSmokeRoot = process.env.OPENCLAW_RUNTIME_PLUGIN_SMOKE_ROOT;
+const expectRuntimePluginTrust = process.env.OPENCLAW_RUNTIME_PLUGIN_EXPECT_TRUST !== "0";
 const runtimePluginSmokeId = process.env.OPENCLAW_RUNTIME_PLUGIN_SMOKE_ID ?? "diagnostics-prometheus";
 
 if (!gatewayPackage) {
@@ -21,6 +22,7 @@ const openclaw = path.join(gatewayPackage, "bin", "openclaw");
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-gateway-smoke-"));
 const token = `smoke-${crypto.randomUUID()}`;
 const logs = { stdout: "", stderr: "" };
+let observedExpectedTrustFailure = false;
 
 function appendLog(name, chunk) {
   logs[name] += chunk.toString();
@@ -71,8 +73,11 @@ function isolatedEnv() {
     OPENCLAW_CONFIG_PATH: path.join(tmpDir, "state", "openclaw.json"),
     OPENCLAW_STATE_DIR: path.join(tmpDir, "state"),
     OPENCLAW_LOG_DIR: path.join(tmpDir, "logs"),
-    OPENCLAW_DISABLE_PERSISTED_PLUGIN_REGISTRY: "1",
-    OPENCLAW_NIX_MODE: "1",
+    OPENCLAW_DISABLE_PERSISTED_PLUGIN_REGISTRY: runtimePluginSmokeRoot ? "0" : "1",
+    OPENCLAW_NIX_MODE: runtimePluginSmokeRoot ? "0" : "1",
+    OPENCLAW_NIX_RUNTIME_PLUGIN_ROOTS: runtimePluginSmokeRoot
+      ? "/nix/store/operator-supplied-untrusted-root"
+      : "",
     NO_COLOR: "1",
   };
 
@@ -161,9 +166,30 @@ async function waitForGatewayHealth(child, port) {
       if (parsed?.ok === true) {
         if (runtimePluginSmokeRoot) {
           const loadedPlugins = parsed.plugins?.loaded ?? [];
-          if (!loadedPlugins.includes(runtimePluginSmokeId)) {
+          const pluginErrors = parsed.plugins?.errors ?? [];
+          const registrationFailure = findRuntimePluginRegistrationFailure();
+          const reportedTrustFailure = pluginErrors.some((error) =>
+            /openKeyedStore is only available for trusted plugins/i.test(
+              typeof error === "string" ? error : JSON.stringify(error),
+            ),
+          );
+          if (!expectRuntimePluginTrust && (registrationFailure || reportedTrustFailure)) {
+            observedExpectedTrustFailure = true;
+            return;
+          }
+          if (pluginErrors.length > 0) {
             throw new Error(
-              `gateway health did not report Nix-managed ${runtimePluginSmokeId} loaded: ${JSON.stringify(parsed.plugins ?? {})}`,
+              `gateway health reported runtime plugin errors: ${JSON.stringify(pluginErrors)}`,
+            );
+          }
+          if (!loadedPlugins.includes(runtimePluginSmokeId)) {
+            lastError = `gateway health did not report Nix-managed ${runtimePluginSmokeId} loaded yet: ${JSON.stringify(parsed.plugins ?? {})}`;
+            await sleep(500);
+            continue;
+          }
+          if (!expectRuntimePluginTrust) {
+            throw new Error(
+              `untrusted Nix-managed ${runtimePluginSmokeId} unexpectedly registered successfully`,
             );
           }
         }
@@ -178,6 +204,30 @@ async function waitForGatewayHealth(child, port) {
   }
 
   throw new Error(`gateway health did not become ready: ${lastError.trim()}`);
+}
+
+function findRuntimePluginRegistrationFailure() {
+  const output = `${logs.stdout}
+${logs.stderr}`;
+  return (
+    output.match(/openKeyedStore is only available for trusted plugins/i)?.[0] ??
+    output.match(/plugin register failed/i)?.[0]
+  );
+}
+
+function assertRuntimePluginRegistrationOutcome() {
+  if (!runtimePluginSmokeRoot) {
+    return;
+  }
+  const failure = findRuntimePluginRegistrationFailure();
+  if (expectRuntimePluginTrust && failure) {
+    throw new Error(`Nix-managed ${runtimePluginSmokeId} registration failed: ${failure}`);
+  }
+  if (!expectRuntimePluginTrust && !failure && !observedExpectedTrustFailure) {
+    throw new Error(
+      `untrusted Nix-managed ${runtimePluginSmokeId} was not rejected by the trusted-plugin guard`,
+    );
+  }
 }
 
 function injectStalePluginInstallRecord() {
@@ -258,6 +308,7 @@ try {
             port,
           },
           plugins: {
+            allow: [runtimePluginSmokeId],
             load: {
               paths: [runtimePluginSmokeRoot],
             },
@@ -275,11 +326,15 @@ try {
   gateway = spawnGateway(port);
   await waitForGatewayHealth(gateway, port);
   await stopProcess(gateway);
+  assertRuntimePluginRegistrationOutcome();
   gateway = null;
 
-  injectStalePluginInstallRecord();
-  gateway = spawnGateway(port);
-  await waitForGatewayHealth(gateway, port);
+  if (expectRuntimePluginTrust) {
+    injectStalePluginInstallRecord();
+    gateway = spawnGateway(port);
+    await waitForGatewayHealth(gateway, port);
+    assertRuntimePluginRegistrationOutcome();
+  }
   console.log(`openclaw gateway smoke: ok (${version.stdout.trim()})`);
 } catch (err) {
   console.error(String(err));

@@ -45,6 +45,7 @@ let
     "applySkipPluginAutoEnableNixModePatch"
     "applyDisablePersistedPluginInstallsPatch"
     "applyNixStorePluginOwnershipPatch"
+    "applyTrustNixRuntimePluginsPatch"
     "publicSurfaceHardlinksPatch"
     "fsSafeSource"
   ];
@@ -150,6 +151,11 @@ let
     PATCH_NIX_STORE_PLUGIN_OWNERSHIP =
       if sourceInfo.applyNixStorePluginOwnershipPatch or false then
         "${../patches/allow-nix-store-plugin-ownership.patch}"
+      else
+        "";
+    PATCH_TRUST_NIX_RUNTIME_PLUGINS =
+      if sourceInfo.applyTrustNixRuntimePluginsPatch or false then
+        "${../patches/trust-nix-runtime-plugins.patch}"
       else
         "";
     PROMOTE_PNPM_INTEGRITY_SH = "${../scripts/promote-pnpm-integrity.sh}";

@@ -8,6 +8,20 @@ This changelog starts with the current pre-1.0 nix-openclaw Home Manager module
 API transition.
 Older repository history is available in git.
 
+## 2026-07-19
+
+### Fixed
+
+- Added immutable attestation and per-instance trust roots for official
+  Nix-managed runtime plugins, allowing trusted plugin APIs such as Codex
+  `openKeyedStore` without relying on mutable install records.
+- Kept Nix store plugin discovery safe for daemon-owned store paths while
+  preserving rejection for untrusted plugin roots.
+- Added a single multi-instance CLI dispatcher so per-instance trust wrappers
+  do not collide on `bin/openclaw` or leak trusted roots across instances.
+- Added trusted and untrusted gateway smoke coverage for Codex, plus runtime
+  plugin trust, QMD composition, and multi-instance profile regressions.
+
 ## 2026-06-06
 
 ### Changed

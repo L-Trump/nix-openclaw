@@ -3,11 +3,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 
 const configPath = process.env.OPENCLAW_CONFIG_PATH;
 const gatewayPackage = process.env.OPENCLAW_GATEWAY;
 const expectedWorkspace = process.env.OPENCLAW_EXPECTED_WORKSPACE;
 const runtimePluginSmokeId = process.env.OPENCLAW_RUNTIME_PLUGIN_SMOKE_ID;
+const runtimePluginSmokeRoot = process.env.OPENCLAW_RUNTIME_PLUGIN_SMOKE_ROOT;
+const wrappedGatewayPackage = process.env.OPENCLAW_WRAPPED_GATEWAY;
 const expectRuntimePlugin = Boolean(runtimePluginSmokeId);
 
 if (!configPath) {
@@ -25,7 +28,7 @@ if (!expectedWorkspace) {
   process.exit(1);
 }
 
-const openclaw = path.join(gatewayPackage, "bin", "openclaw");
+const openclaw = path.join(wrappedGatewayPackage ?? gatewayPackage, "bin", "openclaw");
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-config-validity-"));
 
 try {
@@ -39,10 +42,33 @@ try {
     OPENCLAW_STATE_DIR: path.join(tmpDir, "state"),
     OPENCLAW_LOG_DIR: path.join(tmpDir, "logs"),
     OPENCLAW_NIX_MODE: "1",
+    OPENCLAW_NIX_RUNTIME_PLUGIN_ROOTS: runtimePluginSmokeRoot ?? "",
     SLACK_APP_TOKEN: "xapp-openclaw-nix-check",
     SLACK_BOT_TOKEN: "xoxb-openclaw-nix-check",
     NO_COLOR: "1",
   };
+  const subprocessEnv = wrappedGatewayPackage
+    ? {
+        ...env,
+        OPENCLAW_NIX_MODE: "0",
+        OPENCLAW_DISABLE_PERSISTED_PLUGIN_REGISTRY: expectRuntimePlugin ? "0" : "1",
+        OPENCLAW_NIX_RUNTIME_PLUGIN_ROOTS: "/nix/store/operator-supplied-untrusted-root",
+      }
+    : env;
+  if (wrappedGatewayPackage) {
+    const wrapperSource = fs.readFileSync(openclaw, "utf8");
+    const expectedExports = [
+      "export OPENCLAW_NIX_MODE='1'",
+      `export OPENCLAW_DISABLE_PERSISTED_PLUGIN_REGISTRY='${expectRuntimePlugin ? "1" : "0"}'`,
+      `export OPENCLAW_NIX_RUNTIME_PLUGIN_ROOTS='${runtimePluginSmokeRoot ?? ""}'`,
+    ];
+    for (const expectedExport of expectedExports) {
+      if (!wrapperSource.includes(expectedExport)) {
+        console.error(`Nix runtime plugin wrapper is missing immutable export: ${expectedExport}`);
+        process.exit(1);
+      }
+    }
+  }
 
   for (const key of [
     "HOME",
@@ -59,7 +85,7 @@ try {
   fs.writeFileSync(path.join(env.OPENCLAW_STATE_DIR, "plugins", "installs.json"), "{ stale registry json");
 
   const validate = spawnSync(openclaw, ["config", "validate", "--json"], {
-    env,
+    env: subprocessEnv,
     encoding: "utf8",
   });
 
@@ -81,7 +107,7 @@ try {
   }
 
   const workspace = spawnSync(openclaw, ["config", "get", "agents.defaults.workspace", "--json"], {
-    env,
+    env: subprocessEnv,
     encoding: "utf8",
   });
 
@@ -105,7 +131,7 @@ try {
   }
 
   const plugins = spawnSync(openclaw, ["plugins", "list", "--json", "--verbose"], {
-    env,
+    env: subprocessEnv,
     encoding: "utf8",
   });
 
@@ -150,9 +176,92 @@ try {
     console.error(`Runtime plugin dependencies were not installed: ${JSON.stringify(runtimePlugin)}`);
     process.exit(1);
   }
+  if (expectRuntimePlugin) {
+    const gatewayDist = path.join(gatewayPackage, "lib", "openclaw", "dist");
+    const manifestRegistryCandidates = fs
+      .readdirSync(gatewayDist)
+      .filter((name) => /^manifest-registry-[A-Za-z0-9_-]+\.js$/.test(name))
+      .map((name) => path.join(gatewayDist, name))
+      .filter((file) =>
+        fs.readFileSync(file, "utf8").includes("function isTrustedOfficialNixRuntimePlugin"),
+      );
+    if (manifestRegistryCandidates.length !== 1) {
+      console.error(
+        `expected one patched manifest registry chunk, found ${manifestRegistryCandidates.length}`,
+      );
+      process.exit(1);
+    }
+    const manifestRegistryModule = await import(
+      pathToFileURL(manifestRegistryCandidates[0]).href
+    );
+    const loadPluginManifestRegistry = Object.values(manifestRegistryModule).find(
+      (value) =>
+        typeof value === "function" && value.name === "loadPluginManifestRegistry",
+    );
+    if (!loadPluginManifestRegistry) {
+      console.error("patched manifest registry chunk did not export loadPluginManifestRegistry");
+      process.exit(1);
+    }
+    const manifestRegistry = loadPluginManifestRegistry({
+      config: JSON.parse(fs.readFileSync(configPath, "utf8")),
+      env,
+    });
+    const manifestRecord = manifestRegistry.plugins?.find(
+      (plugin) => plugin.id === runtimePluginSmokeId,
+    );
+    if (manifestRecord?.trustedOfficialInstall !== true) {
+      console.error(
+        `Runtime plugin manifest was not trusted as an attested Nix package: ${JSON.stringify({
+          manifestRecord,
+          pluginIds: manifestRegistry.plugins?.map((plugin) => plugin.id),
+          diagnostics: manifestRegistry.diagnostics,
+          trustedRoots: env.OPENCLAW_NIX_RUNTIME_PLUGIN_ROOTS,
+          nixMode: env.OPENCLAW_NIX_MODE,
+          processNixMode: process.env.OPENCLAW_NIX_MODE,
+          runtimeRootRealpath: fs.realpathSync(runtimePluginSmokeRoot),
+          runtimeRootUid: fs.statSync(runtimePluginSmokeRoot).uid,
+          configLoadPaths: JSON.parse(fs.readFileSync(configPath, "utf8")).plugins?.load?.paths,
+        })}`,
+      );
+      process.exit(1);
+    }
+
+    const negativeTrustCases = [
+      {
+        name: "missing trusted root",
+        env: { ...env, OPENCLAW_NIX_RUNTIME_PLUGIN_ROOTS: "" },
+      },
+      {
+        name: "Nix mode disabled",
+        env: { ...env, OPENCLAW_NIX_MODE: "0" },
+      },
+    ];
+    for (const [index, testCase] of negativeTrustCases.entries()) {
+      const isolatedModule = await import(
+        `${pathToFileURL(manifestRegistryCandidates[0]).href}?negativeTrustCase=${index}`
+      );
+      const isolatedLoadPluginManifestRegistry = Object.values(isolatedModule).find(
+        (value) =>
+          typeof value === "function" && value.name === "loadPluginManifestRegistry",
+      );
+      const untrustedRegistry = isolatedLoadPluginManifestRegistry({
+        config: JSON.parse(fs.readFileSync(configPath, "utf8")),
+        env: testCase.env,
+      });
+      const untrustedRecord = untrustedRegistry.plugins?.find(
+        (plugin) => plugin.id === runtimePluginSmokeId,
+      );
+      if (untrustedRecord?.trustedOfficialInstall === true) {
+        console.error(
+          `Runtime plugin trust was granted for negative case ${testCase.name}: ${JSON.stringify(untrustedRecord)}`,
+        );
+        process.exit(1);
+      }
+    }
+  }
 
   const status = spawnSync(openclaw, ["status", "--timeout", "1000"], {
-    env,
+    env: subprocessEnv,
     encoding: "utf8",
   });
 
