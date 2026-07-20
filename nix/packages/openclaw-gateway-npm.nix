@@ -52,6 +52,9 @@ buildNpmPackageForOpenClaw {
     OPENCLAW_CONTEXT_BUDGET_PATCH_NPM_DIST_SCRIPT = "${
       ../scripts/patch-openclaw-context-budget-npm-dist.mjs
     }";
+    OPENCLAW_CONTEXT_ENGINE_TOOL_TRUNCATION_PATCH_NPM_DIST_SCRIPT = "${
+      ../scripts/patch-openclaw-context-engine-tool-truncation-npm-dist.mjs
+    }";
     STDENV_SETUP = "${stdenv}/setup";
   };
 

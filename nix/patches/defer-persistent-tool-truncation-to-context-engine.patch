@@ -1,0 +1,346 @@
+diff --git a/src/agents/embedded-agent-runner/tool-result-truncation.ts b/src/agents/embedded-agent-runner/tool-result-truncation.ts
+--- a/src/agents/embedded-agent-runner/tool-result-truncation.ts
++++ b/src/agents/embedded-agent-runner/tool-result-truncation.ts
+@@ -538,6 +538,7 @@ export function truncateOversizedToolResultsInMessages(
+   maxCharsOverride?: number,
+   aggregateMaxCharsOverride?: number,
+   projectionState?: ToolResultPromptProjectionState,
++  projectionOptions?: { protectTrailingToolResults?: boolean },
+ ): {
+   messages: AgentMessage[];
+   truncatedCount: number;
+@@ -596,7 +597,8 @@ export function truncateOversizedToolResultsInMessages(
+     aggregateBudgetChars,
+     minKeepChars: RECOVERY_MIN_KEEP_CHARS,
+     aggregateReductionQuantumRatio: AGGREGATE_REDUCTION_QUANTUM_RATIO,
+-    protectTrailingToolResults: Boolean(projectionState),
++    protectTrailingToolResults:
++      projectionOptions?.protectTrailingToolResults ?? Boolean(projectionState),
+   });
+   if (projectionState) {
+     for (const [index] of messages.entries()) {
+diff --git a/src/agents/embedded-agent-runner/tool-result-truncation.test.ts b/src/agents/embedded-agent-runner/tool-result-truncation.test.ts
+--- a/src/agents/embedded-agent-runner/tool-result-truncation.test.ts
++++ b/src/agents/embedded-agent-runner/tool-result-truncation.test.ts
+@@ -1048,6 +1048,32 @@ describe("truncateOversizedToolResultsInMessages", () => {
+     expect(toolResults.every((message) => getFirstToolResultText(message).length > 0)).toBe(true);
+   });
+
++  it("can bound fresh trailing batches at the final provider boundary", () => {
++    const projectionState = createToolResultPromptProjectionState();
++    const messages: AgentMessage[] = [makeUserMessage("run several tools")];
++    for (let index = 0; index < 5; index++) {
++      messages.push(makeToolResult(String(index).repeat(8_000), `fresh_${index}`));
++    }
++
++    const result = truncateOversizedToolResultsInMessages(
++      messages,
++      1_000_000,
++      8_000,
++      32_000,
++      projectionState,
++      { protectTrailingToolResults: false },
++    );
++    const toolResults = result.messages.filter((message) => message.role === "toolResult");
++    const totalChars = toolResults.reduce(
++      (sum, message) => sum + getToolResultTextLength(message),
++      0,
++    );
++
++    expect(result.truncatedCount).toBeGreaterThan(0);
++    expect(totalChars).toBeLessThanOrEqual(32_000);
++    expect(projectionState.replacements.size).toBeGreaterThan(0);
++  });
++
+   it("keeps aggregate elision markers inside tiny explicit budgets", () => {
+     const messages: AgentMessage[] = [
+       makeToolResult("a".repeat(100), "tiny_1"),
+diff --git a/src/agents/embedded-agent-runner/run.overflow-compaction.loop.test.ts b/src/agents/embedded-agent-runner/run.overflow-compaction.loop.test.ts
+index 7a33adb23a..d196473aa9 100644
+--- a/src/agents/embedded-agent-runner/run.overflow-compaction.loop.test.ts
++++ b/src/agents/embedded-agent-runner/run.overflow-compaction.loop.test.ts
+@@ -350,6 +350,25 @@ describe("overflow compaction in run loop", () => {
+     expect(result.meta.error).toBeUndefined();
+   });
+
++  it("does not persist fallback tool-result truncation when the context engine owns compaction", async () => {
++    mockedContextEngine.info.ownsCompaction = true;
++    queueOverflowAttemptWithOversizedToolOutput(mockedRunEmbeddedAttempt, makeOverflowError());
++
++    mockedCompactDirect.mockResolvedValueOnce({
++      ok: true,
++      compacted: false,
++      reason: "already under target",
++    });
++    mockedSessionLikelyHasOversizedToolResults.mockReturnValue(true);
++
++    const result = await runEmbeddedAgent(baseParams);
++
++    expect(mockedCompactDirect).toHaveBeenCalledTimes(1);
++    expect(mockedTruncateOversizedToolResultsInSession).not.toHaveBeenCalled();
++    expectLogIncludes(mockedLog.info, "context engine owns compaction");
++    expect(result.meta.error?.kind).toBe("context_overflow");
++  });
++
+   it("retries after fallback truncation for a mixed oversized-plus-aggregate tool tail", async () => {
+     mockedRunEmbeddedAttempt
+       .mockResolvedValueOnce(
+@@ -541,6 +560,36 @@ describe("overflow compaction in run loop", () => {
+     expect(result.meta.error).toBeUndefined();
+   });
+
++  it("reassembles without persistent truncation after engine-owned compaction", async () => {
++    mockedContextEngine.info.ownsCompaction = true;
++    mockedRunEmbeddedAttempt
++      .mockResolvedValueOnce(
++        makeAttemptResult({
++          promptError: makeOverflowError(
++            "Context overflow: prompt too large for the model (precheck).",
++          ),
++          preflightRecovery: { route: "compact_then_truncate" },
++        }),
++      )
++      .mockResolvedValueOnce(makeAttemptResult({ promptError: null }));
++
++    mockedCompactDirect.mockResolvedValueOnce(
++      makeCompactionSuccess({
++        summary: "Engine-owned compacted session",
++        firstKeptEntryId: "entry-5",
++        tokensBefore: 150000,
++      }),
++    );
++
++    const result = await runEmbeddedAgent(baseParams);
++
++    expect(mockedCompactDirect).toHaveBeenCalledTimes(1);
++    expect(mockedTruncateOversizedToolResultsInSession).not.toHaveBeenCalled();
++    expect(mockedRunEmbeddedAttempt).toHaveBeenCalledTimes(2);
++    expectLogIncludes(mockedLog.info, "skipped persistent post-compaction");
++    expect(result.meta.error).toBeUndefined();
++  });
++
+   it("retries compaction up to 3 times before giving up", async () => {
+     const overflowError = makeOverflowError();
+
+diff --git a/src/agents/embedded-agent-runner/run.ts b/src/agents/embedded-agent-runner/run.ts
+index 1645ae0dd6..5db25973f1 100644
+--- a/src/agents/embedded-agent-runner/run.ts
++++ b/src/agents/embedded-agent-runner/run.ts
+@@ -2925,7 +2925,10 @@ async function runEmbeddedAgentInternal(
+                 ) {
+                   lastCompactionTokensAfter = Math.floor(compactResult.result.tokensAfter);
+                 }
+-                if (preflightRecovery?.route === "compact_then_truncate") {
++                if (
++                  preflightRecovery?.route === "compact_then_truncate" &&
++                  contextEngine.info.ownsCompaction !== true
++                ) {
+                   const truncResult = await truncateOversizedToolResultsInSession({
+                     sessionFile: activeSessionFile,
+                     contextWindowTokens: ctxInfo.tokens,
+@@ -2951,6 +2954,11 @@ async function runEmbeddedAgentInternal(
+                         `${provider}/${modelId}: ${truncResult.reason ?? "unknown"}`,
+                     );
+                   }
++                } else if (preflightRecovery?.route === "compact_then_truncate") {
++                  log.info(
++                    `[context-overflow-precheck] skipped persistent post-compaction ` +
++                      `tool-result truncation for ${provider}/${modelId}: context engine owns compaction`,
++                  );
+                 }
+                 autoCompactionCount += 1;
+                 log.info(`auto-compaction succeeded for ${provider}/${modelId}; retrying prompt`);
+@@ -2990,32 +2998,40 @@ async function runEmbeddedAgentInternal(
+
+               if (hasOversized) {
+                 toolResultTruncationAttempted = true;
+-                log.warn(
+-                  `[context-overflow-recovery] Attempting tool result truncation for ${provider}/${modelId} ` +
+-                    `(contextWindow=${contextWindowTokens} tokens)`,
+-                );
+-                const truncResult = await truncateOversizedToolResultsInSession({
+-                  sessionFile: activeSessionFile,
+-                  contextWindowTokens,
+-                  maxCharsOverride: toolResultMaxChars,
+-                  sessionId: activeSessionId,
+-                  sessionKey: params.sessionKey,
+-                  agentId: sessionAgentId,
+-                  config: params.config,
+-                  protectTrailingToolResults: preflightRecovery?.route === "compact_then_truncate",
+-                });
+-                if (truncResult.truncated) {
++                if (contextEngine.info.ownsCompaction === true) {
+                   log.info(
+-                    `[context-overflow-recovery] Truncated ${truncResult.truncatedCount} tool result(s); retrying prompt`,
++                    `[context-overflow-recovery] Skipping persistent tool-result truncation for ` +
++                      `${provider}/${modelId}: context engine owns compaction and live prompt projection remains active`,
+                   );
+-                  if (preflightRecovery?.source === "mid-turn") {
+-                    continueFromCurrentTranscript();
++                } else {
++                  log.warn(
++                    `[context-overflow-recovery] Attempting tool result truncation for ${provider}/${modelId} ` +
++                      `(contextWindow=${contextWindowTokens} tokens)`,
++                  );
++                  const truncResult = await truncateOversizedToolResultsInSession({
++                    sessionFile: activeSessionFile,
++                    contextWindowTokens,
++                    maxCharsOverride: toolResultMaxChars,
++                    sessionId: activeSessionId,
++                    sessionKey: params.sessionKey,
++                    agentId: sessionAgentId,
++                    config: params.config,
++                    protectTrailingToolResults:
++                      preflightRecovery?.route === "compact_then_truncate",
++                  });
++                  if (truncResult.truncated) {
++                    log.info(
++                      `[context-overflow-recovery] Truncated ${truncResult.truncatedCount} tool result(s); retrying prompt`,
++                    );
++                    if (preflightRecovery?.source === "mid-turn") {
++                      continueFromCurrentTranscript();
++                    }
++                    continue;
+                   }
+-                  continue;
++                  log.warn(
++                    `[context-overflow-recovery] Tool result truncation did not help: ${truncResult.reason ?? "unknown"}`,
++                  );
+                 }
+-                log.warn(
+-                  `[context-overflow-recovery] Tool result truncation did not help: ${truncResult.reason ?? "unknown"}`,
+-                );
+               }
+             }
+             if (
+diff --git a/src/agents/embedded-agent-runner/run/attempt.spawn-workspace.context-engine.test.ts b/src/agents/embedded-agent-runner/run/attempt.spawn-workspace.context-engine.test.ts
+index 03e25f6db3..bc5cd5f005 100644
+--- a/src/agents/embedded-agent-runner/run/attempt.spawn-workspace.context-engine.test.ts
++++ b/src/agents/embedded-agent-runner/run/attempt.spawn-workspace.context-engine.test.ts
+@@ -3271,6 +3271,75 @@ describe("runEmbeddedAttempt tool-result guard budget wiring", () => {
+     expect(hoisted.preemptiveCompactionCalls).toHaveLength(0);
+   });
+
++  it("submits the live aggregate projection when the context engine owns compaction", async () => {
++    let sawPrompt = false;
++    let submittedMessages: AgentMessage[] = [];
++    const sessionMessages: AgentMessage[] = [
++      { role: "user", content: "seed", timestamp: 1 },
++      makeAgentAssistantMessage({
++        content: Array.from({ length: 5 }, (_, index) => ({
++          type: "toolCall",
++          id: `owned_${index}`,
++          name: "read",
++          arguments: {},
++        })),
++        timestamp: 2,
++      }),
++    ];
++    for (let index = 0; index < 5; index += 1) {
++      sessionMessages.push({
++        role: "toolResult",
++        toolCallId: `owned_${index}`,
++        toolName: "read",
++        content: [{ type: "text", text: `${index}: ${"aggregate output ".repeat(900)}` }],
++        isError: false,
++        timestamp: 3 + index,
++      } as AgentMessage);
++    }
++    const originalToolResultChars = sumToolResultTextChars(sessionMessages);
++
++    const result = await createContextEngineAttemptRunner({
++      contextEngine: {
++        ...createContextEngineBootstrapAndAssemble(),
++        info: { ownsCompaction: true },
++      },
++      sessionKey,
++      tempPaths,
++      sessionMessages,
++      attemptOverrides: {
++        contextTokenBudget: 1_000,
++      },
++      createSession: () => {
++        const session = createDefaultEmbeddedSession({ initialMessages: sessionMessages });
++        session.agent.streamFn = async (_model, context) => {
++          submittedMessages =
++            (context as { messages?: AgentMessage[] } | undefined)?.messages ?? [];
++          return {
++            async result() {
++              return doneMessage;
++            },
++            [Symbol.asyncIterator]() {
++              return (async function* () {})();
++            },
++          };
++        };
++        session.prompt = async (_prompt, options) => {
++          sawPrompt = true;
++          options?.preflightResult?.(true);
++          await session.agent.streamFn?.({} as never, { messages: session.messages } as never, {});
++          session.messages = [...session.messages, doneMessage];
++        };
++        return session;
++      },
++    });
++
++    expect(sawPrompt).toBe(true);
++    expect(result.promptError).toBeNull();
++    expect(result.preflightRecovery).toBeUndefined();
++    expect(hoisted.preemptiveCompactionCalls).toHaveLength(0);
++    expect(sumToolResultTextChars(submittedMessages)).toBeLessThan(originalToolResultChars);
++  });
++
+   it("routes protected trailing aggregate pressure to compact-then-truncate", async () => {
+     let sawPrompt = false;
+     const sessionMessages: AgentMessage[] = [
+diff --git a/src/agents/embedded-agent-runner/run/attempt.ts b/src/agents/embedded-agent-runner/run/attempt.ts
+index e0d8dd0024..07efb297ab 100644
+--- a/src/agents/embedded-agent-runner/run/attempt.ts
++++ b/src/agents/embedded-agent-runner/run/attempt.ts
+@@ -4383,6 +4383,9 @@ export async function runEmbeddedAttempt(
+           if (promptHistoryChanged) {
+             promptHistoryMessages = promptToolResultTruncation.messages;
+           }
++          const contextEngineOwnsPromptCompaction =
++            contextEngineAssemblySucceeded &&
++            activeContextEngine?.info.ownsCompaction === true;
+           if (promptHistoryChanged || aggregatePressureEngaged) {
+             const sessionLogKey = params.sessionKey ?? params.sessionId ?? "unknown";
+             const truncationLog =
+@@ -4396,15 +4399,19 @@ export async function runEmbeddedAttempt(
+               if (!aggregateToolResultPressureWarnings.has(sessionLogKey)) {
+                 aggregateToolResultPressureWarnings.add(sessionLogKey);
+                 log.warn(
+-                  `${truncationLog}; aggregate tool-result pressure detected, compaction has been requested; consider /compact or /new if pressure persists`,
++                  contextEngineOwnsPromptCompaction
++                    ? `${truncationLog}; aggregate tool-result pressure handled by live prompt projection because the context engine owns compaction`
++                    : `${truncationLog}; aggregate tool-result pressure detected, compaction has been requested; consider /compact or /new if pressure persists`,
+                 );
+               }
+-              // Compaction and aggregate truncation both target about half the window;
+-              // compact-then-truncate prevents re-hitting the same cap on the next turn.
+-              preflightRecovery = { route: "compact_then_truncate" };
+-              promptError = new Error(PREEMPTIVE_OVERFLOW_ERROR_TEXT);
+-              promptErrorSource = "precheck";
+-              skipPromptSubmission = true;
++              if (!contextEngineOwnsPromptCompaction) {
++                // Compaction and aggregate truncation both target about half the window;
++                // compact-then-truncate prevents re-hitting the same cap on the next turn.
++                preflightRecovery = { route: "compact_then_truncate" };
++                promptError = new Error(PREEMPTIVE_OVERFLOW_ERROR_TEXT);
++                promptErrorSource = "precheck";
++                skipPromptSubmission = true;
++              }
+             } else {
+               log.info(truncationLog);
+             }
+@@ -5000,6 +5007,9 @@ export async function runEmbeddedAttempt(
+                     promptToolResultMaxChars,
+                     promptToolResultAggregateMaxChars,
+                     toolResultPromptProjectionState,
++                    {
++                      protectTrailingToolResults: !contextEngineOwnsPromptCompaction,
++                    },
+                   );
+                   const providerMessages =
+                     providerPromptHistoryTruncation.messages !== messages

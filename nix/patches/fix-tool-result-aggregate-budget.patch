@@ -1,9 +1,9 @@
 diff --git a/src/agents/embedded-agent-runner/tool-result-truncation.test.ts b/src/agents/embedded-agent-runner/tool-result-truncation.test.ts
-index 4e75044f0..f2ff74da2 100644
+index 38bc337d9b..81c9818a14 100644
 --- a/src/agents/embedded-agent-runner/tool-result-truncation.test.ts
 +++ b/src/agents/embedded-agent-runner/tool-result-truncation.test.ts
-@@ -351,20 +351,33 @@ describe("calculateMaxToolResultChars", () => {
- 
+@@ -351,9 +351,9 @@ describe("calculateMaxToolResultChars", () => {
+
    it.each([
      { contextWindowTokens: 20_000, perResultMaxChars: 16_000, aggregateMaxChars: 64_000 },
 -    { contextWindowTokens: 128_000, perResultMaxChars: 32_000, aggregateMaxChars: 256_000 },
@@ -15,11 +15,7 @@ index 4e75044f0..f2ff74da2 100644
    ])(
      "resolves aggregate live cap for $contextWindowTokens token windows",
      ({ contextWindowTokens, perResultMaxChars, aggregateMaxChars }) => {
-       expect(
-         resolveLiveToolResultAggregateMaxChars({
-           contextWindowTokens,
-           perResultMaxChars,
-         }),
+@@ -365,6 +365,17 @@ describe("calculateMaxToolResultChars", () => {
        ).toBe(aggregateMaxChars);
      },
    );
@@ -32,26 +28,173 @@ index 4e75044f0..f2ff74da2 100644
 +    });
 +
 +    expect(aggregateMaxChars).toBe(372_000);
-+    expect(aggregateMaxChars * (4 / 2)).toBeLessThan(
-+      contextWindowTokens * 4 * 0.9,
-+    );
++    expect(aggregateMaxChars * (4 / 2)).toBeLessThan(contextWindowTokens * 4 * 0.9);
 +  });
  });
- 
+
  describe("sessionLikelyHasOversizedToolResults", () => {
+@@ -404,6 +415,25 @@ describe("estimateToolResultReductionPotential", () => {
+     expect(estimate.maxReducibleChars).toBe(0);
+   });
+
++  it("matches the live prompt aggregate quantum in reduction estimates", () => {
++    const messages: AgentMessage[] = [
++      makeToolResult("x".repeat(5_000), "call_1"),
++      makeToolResult("y".repeat(5_000), "call_2"),
++      makeToolResult("z".repeat(5_000), "call_3"),
++    ];
++
++    const estimate = estimateToolResultReductionPotential({
++      messages,
++      contextWindowTokens: 128_000,
++      maxCharsOverride: 12_000,
++      aggregateMaxCharsOverride: 12_000,
++    });
++
++    expect(estimate.aggregateBudgetChars).toBe(12_000);
++    expect(estimate.totalToolResultChars).toBe(15_000);
++    expect(estimate.aggregateReducibleChars).toBeGreaterThan(3_000);
++  });
++
+   it("estimates reducible chars for aggregate medium tool-result tails", () => {
+     const medium = "alpha beta gamma delta epsilon ".repeat(400);
+     const messages: AgentMessage[] = [
+@@ -535,6 +565,37 @@ describe("truncateOversizedToolResultsInMessages", () => {
+     }
+   });
+
++  it("reduces aggregate overflow in coarse chunks to avoid repeated cache-prefix churn", () => {
++    const messages: AgentMessage[] = [
++      makeUserMessage("hello"),
++      makeAssistantMessage("calling tools"),
++      makeToolResult("x".repeat(5_000), "call_1"),
++      makeToolResult("y".repeat(5_000), "call_2"),
++      makeToolResult("z".repeat(5_000), "call_3"),
++    ];
++
++    const { messages: result, truncatedCount } = truncateOversizedToolResultsInMessages(
++      messages,
++      128_000,
++      12_000,
++      12_000,
++    );
++
++    const totalChars = result.reduce(
++      (sum, message) =>
++        sum + (message.role === "toolResult" ? getToolResultTextLength(message) : 0),
++      0,
++    );
++
++    // The 3k overflow rounds up to two 2.4k quanta, leaving headroom for
++    // appended tool results before frozen history needs another rewrite.
++    expect(truncatedCount).toBe(1);
++    expect(totalChars).toBeLessThanOrEqual(10_200);
++    expect(totalChars).toBeLessThan(12_000);
++    expect(getToolResultTextLength(result[3])).toBe(5_000);
++    expect(getToolResultTextLength(result[4])).toBe(5_000);
++  });
++
+   it("bounds aggregate tool-result text in prompt history without rewriting callers", () => {
+     // Live replay truncates cloned tool-result messages; the source array keeps
+     // full content for UI and transcript persistence.
+@@ -790,14 +851,13 @@ describe("truncateOversizedToolResultsInMessages", () => {
+     );
+     expect(freshResult && getFirstToolResultText(freshResult)).toBe(freshOutput);
+     expect(
+-      historicalResults.some(
++      historicalResults.every(
+         (message) =>
+-          getToolResultTextLength(message) <
+-          (firstHistoricalLengths.get(message.toolCallId) ?? Number.POSITIVE_INFINITY),
++          getToolResultTextLength(message) === firstHistoricalLengths.get(message.toolCallId),
+       ),
+     ).toBe(true);
+-    expect(second.aggregateTruncatedCount).toBeGreaterThan(0);
+-    expect(second.aggregatePressureEngaged).toBe(true);
++    expect(second.aggregateTruncatedCount).toBe(0);
++    expect(second.aggregatePressureEngaged).toBe(false);
+     expect(totalChars).toBeLessThanOrEqual(32_000);
+   });
+
+@@ -860,14 +920,13 @@ describe("truncateOversizedToolResultsInMessages", () => {
+
+     expect(freshResults.map(getFirstToolResultText)).toEqual(freshOutputs);
+     expect(
+-      historicalResults.some(
++      historicalResults.every(
+         (message) =>
+-          getToolResultTextLength(message) <
+-          (firstHistoricalLengths.get(message.toolCallId) ?? Number.POSITIVE_INFINITY),
++          getToolResultTextLength(message) === firstHistoricalLengths.get(message.toolCallId),
+       ),
+     ).toBe(true);
+-    expect(second.aggregateTruncatedCount).toBeGreaterThan(0);
+-    expect(second.aggregatePressureEngaged).toBe(true);
++    expect(second.aggregateTruncatedCount).toBe(0);
++    expect(second.aggregatePressureEngaged).toBe(false);
+     expect(totalChars).toBeLessThanOrEqual(32_000);
+   });
+
+@@ -1253,6 +1312,38 @@ describe("truncateOversizedToolResultsInMessages", () => {
+ });
+
+ describe("truncateOversizedToolResultsInSession", () => {
++  it("uses exact aggregate shaving for persisted session recovery", async () => {
++    const dir = await createTmpDir();
++    const sm = SessionManager.create(dir, dir);
++    sm.appendMessage(makeUserMessage("hello"));
++    sm.appendMessage(makeAssistantMessage("calling tools"));
++    sm.appendMessage(makeToolResult("x".repeat(5_000), "call_1"));
++    sm.appendMessage(makeToolResult("y".repeat(5_000), "call_2"));
++    sm.appendMessage(makeToolResult("z".repeat(5_000), "call_3"));
++    const sessionFile = sm.getSessionFile()!;
++
++    const result = await truncateOversizedToolResultsInSession({
++      sessionFile,
++      contextWindowTokens: 128_000,
++      maxCharsOverride: 12_000,
++      aggregateMaxCharsOverride: 12_000,
++    });
++
++    expect(result.truncated).toBe(true);
++    const afterBranch = SessionManager.open(sessionFile).getBranch();
++    const totalChars = afterBranch.reduce(
++      (sum, entry) =>
++        sum +
++        (entry.type === "message" && entry.message.role === "toolResult"
++          ? getToolResultTextLength(entry.message)
++          : 0),
++      0,
++    );
++
++    expect(totalChars).toBeLessThanOrEqual(12_000);
++    expect(totalChars).toBeGreaterThan(10_200);
++  });
++
+   it("readably truncates aggregate medium tool results in a session file", async () => {
+     // Persisted truncation rewrites JSONL directly and emits the transcript
+     // update event instead of reopening through SessionManager internals.
 diff --git a/src/agents/embedded-agent-runner/tool-result-truncation.ts b/src/agents/embedded-agent-runner/tool-result-truncation.ts
-index 0d49a4432..e48d5f27e 100644
+index 3f8681ee2f..6dcb6a99aa 100644
 --- a/src/agents/embedded-agent-runner/tool-result-truncation.ts
 +++ b/src/agents/embedded-agent-runner/tool-result-truncation.ts
-@@ -19,6 +19,7 @@ import {
- import { SessionManager } from "../sessions/index.js";
- import { formatFullOutputFooter } from "../sessions/tools/tool-contracts.js";
+@@ -21,6 +21,7 @@ import { formatFullOutputFooter } from "../sessions/tools/tool-contracts.js";
  import { formatContextLimitTruncationNotice } from "./context-truncation-notice.js";
-+import { TOOL_RESULT_CHARS_PER_TOKEN_ESTIMATE } from "./tool-result-char-estimator.js";
  import { log } from "./logger.js";
  import type { ToolResultPromptProjectionState } from "./session-prompt-state.js";
++import { TOOL_RESULT_CHARS_PER_TOKEN_ESTIMATE } from "./tool-result-char-estimator.js";
  import {
-@@ -311,11 +312,13 @@ export function resolveLiveToolResultAggregateMaxChars(params: {
+   persistTranscriptStateMutation,
+   readTranscriptFileState,
+@@ -52,6 +53,7 @@ const LARGE_CONTEXT_TOOL_RESULT_TOKENS = 100_000;
+ const XL_CONTEXT_TOOL_RESULT_TOKENS = 200_000;
+ const PROMPT_TOOL_RESULT_AGGREGATE_CAP_MULTIPLIER = 4;
+ const AGGREGATE_TOOL_RESULT_CONTEXT_SHARE = 0.5;
++const AGGREGATE_REDUCTION_QUANTUM_RATIO = 0.2;
+
+ /**
+  * Minimum characters to keep when truncating.
+@@ -311,11 +313,13 @@ export function resolveLiveToolResultAggregateMaxChars(params: {
    const contextWindowTokens = Number.isFinite(params.contextWindowTokens)
      ? Math.max(1, Math.floor(params.contextWindowTokens))
      : 1;
@@ -69,5 +212,64 @@ index 0d49a4432..e48d5f27e 100644
    );
    return Math.max(
      perResultMaxChars * PROMPT_TOOL_RESULT_AGGREGATE_CAP_MULTIPLIER,
--- 
-2.51.0
+@@ -591,6 +595,7 @@ export function truncateOversizedToolResultsInMessages(
+     maxChars,
+     aggregateBudgetChars,
+     minKeepChars: RECOVERY_MIN_KEEP_CHARS,
++    aggregateReductionQuantumRatio: AGGREGATE_REDUCTION_QUANTUM_RATIO,
+     protectTrailingToolResults: Boolean(projectionState),
+   });
+   if (projectionState) {
+@@ -805,6 +810,7 @@ function buildAggregateToolResultReplacements(params: {
+   spillSourceBranch?: ToolResultBranchEntry[];
+   aggregateBudgetChars: number;
+   minKeepChars?: number;
++  aggregateReductionQuantumRatio?: number;
+   protectTrailingToolResults?: boolean;
+ }): { replacements: ToolResultReplacement[]; pressureExceeded: boolean } {
+   const minKeepChars = params.minKeepChars ?? MIN_KEEP_CHARS;
+@@ -858,7 +864,20 @@ function buildAggregateToolResultReplacements(params: {
+     return { replacements: [], pressureExceeded: false };
+   }
+
+-  let remainingReduction = totalChars - params.aggregateBudgetChars;
++  const aggregateOverflowChars = totalChars - params.aggregateBudgetChars;
++  // Live prompt projection and its matching pressure estimate use a coarse
++  // reduction quantum to avoid shaving exactly the current overflow on every
++  // appended tool result. Persisted recovery leaves the ratio undefined so it
++  // still performs the minimum exact reduction. Tiny explicit budgets also stay
++  // exact so rounding cannot erase model-visible recovery markers.
++  const aggregateReductionQuantumChars =
++    params.aggregateReductionQuantumRatio !== undefined &&
++    params.aggregateBudgetChars >= MIN_KEEP_CHARS
++      ? Math.max(1, Math.ceil(params.aggregateBudgetChars * params.aggregateReductionQuantumRatio))
++      : 1;
++  let remainingReduction =
++    Math.ceil(aggregateOverflowChars / aggregateReductionQuantumChars) *
++    aggregateReductionQuantumChars;
+   const replacements: Array<{ entryId: string; message: AgentMessage }> = [];
+   const aggregateRecoveryCandidates = candidates
+     .filter((item) => !item.deferredByFreshProjection && !item.protectedByTrailingBatch)
+@@ -1081,6 +1100,7 @@ function buildToolResultReplacementPlan(params: {
+   maxChars: number;
+   aggregateBudgetChars: number;
+   minKeepChars?: number;
++  aggregateReductionQuantumRatio?: number;
+   protectTrailingToolResults?: boolean;
+ }): {
+   replacements: ToolResultReplacement[];
+@@ -1113,6 +1133,7 @@ function buildToolResultReplacementPlan(params: {
+     spillSourceBranch: params.branch,
+     aggregateBudgetChars: params.aggregateBudgetChars,
+     minKeepChars,
++    aggregateReductionQuantumRatio: params.aggregateReductionQuantumRatio,
+     protectTrailingToolResults: params.protectTrailingToolResults,
+   });
+   const aggregateReplacements = aggregatePlan.replacements;
+@@ -1170,5 +1191,6 @@ export function estimateToolResultReductionPotential(params: {
+     maxChars,
+     aggregateBudgetChars,
+     minKeepChars: RECOVERY_MIN_KEEP_CHARS,
++    aggregateReductionQuantumRatio: AGGREGATE_REDUCTION_QUANTUM_RATIO,
+   });
+   const maxReducibleChars = plan.oversizedReducibleChars + plan.aggregateReducibleChars;

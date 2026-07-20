@@ -15,6 +15,12 @@ Older repository history is available in git.
 - Corrected the OpenClaw 2026.7.1 aggregate tool-result recovery budget to use
   the same two-characters-per-token density as the tool-loop overflow guard,
   preventing successful compaction from immediately re-entering overflow.
+- Made live aggregate tool-result recovery reclaim 20% chunks while keeping
+  persisted repair exact, preserving stable prompt-cache prefixes between the
+  recovery steps in long tool loops.
+- Deferred persistent tool-result truncation to context engines that own
+  compaction, keeping provider-bound live projection as the non-destructive
+  safety guard for tool-heavy prompts.
 - Added immutable attestation and per-instance trust roots for official
   Nix-managed runtime plugins, allowing trusted plugin APIs such as Codex
   `openKeyedStore` without relying on mutable install records.

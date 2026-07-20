@@ -33,6 +33,10 @@ if [ -z "${OPENCLAW_CONTEXT_BUDGET_PATCH_NPM_DIST_SCRIPT:-}" ] || [ ! -f "$OPENC
   echo "OPENCLAW_CONTEXT_BUDGET_PATCH_NPM_DIST_SCRIPT is not set or missing" >&2
   exit 1
 fi
+if [ -z "${OPENCLAW_CONTEXT_ENGINE_TOOL_TRUNCATION_PATCH_NPM_DIST_SCRIPT:-}" ] || [ ! -f "$OPENCLAW_CONTEXT_ENGINE_TOOL_TRUNCATION_PATCH_NPM_DIST_SCRIPT" ]; then
+  echo "OPENCLAW_CONTEXT_ENGINE_TOOL_TRUNCATION_PATCH_NPM_DIST_SCRIPT is not set or missing" >&2
+  exit 1
+fi
 
 package_root="${OPENCLAW_NPM_PACKAGE_ROOT:-node_modules/openclaw}"
 if [ ! -d "$package_root" ]; then
@@ -57,6 +61,8 @@ log_step "apply Codex-style request and replay-safe stream retry patches"
 OPENCLAW_PACKAGE_ROOT="$root" "$NODE_BIN" "$OPENCLAW_RETRY_PATCH_NPM_DIST_SCRIPT"
 log_step "align aggregate tool-result budget with the tool-loop estimator"
 OPENCLAW_PACKAGE_ROOT="$root" "$NODE_BIN" "$OPENCLAW_CONTEXT_BUDGET_PATCH_NPM_DIST_SCRIPT"
+log_step "defer persistent tool-result truncation to engine-owned compaction"
+OPENCLAW_PACKAGE_ROOT="$root" "$NODE_BIN" "$OPENCLAW_CONTEXT_ENGINE_TOOL_TRUNCATION_PATCH_NPM_DIST_SCRIPT"
 log_step "verify local npm dist compatibility patches"
 OPENCLAW_PACKAGE_ROOT="$root" "$NODE_BIN" "$OPENCLAW_VERIFY_LOCAL_PATCH_NPM_DIST_SCRIPT"
 
