@@ -1,0 +1,284 @@
+diff --git a/src/agents/embedded-agent-runner/run/attempt.ts b/src/agents/embedded-agent-runner/run/attempt.ts
+index 07efb297..eefe211f 100644
+--- a/src/agents/embedded-agent-runner/run/attempt.ts
++++ b/src/agents/embedded-agent-runner/run/attempt.ts
+@@ -2746,6 +2746,10 @@ export async function runEmbeddedAttempt(
+           }
+         : {};
+       if (activeContextEngine?.info.ownsCompaction === true) {
++        let contextEngineLoopAssemblyState: {
++          succeeded: boolean;
++          promptAuthority: NonNullable<AssembleResult["promptAuthority"]>;
++        } | null = null;
+         const selectedContextEngineId = activeContextEngine.info.id;
+         const contextEngineLoopRuntimeSettings = buildContextEngineRuntimeSettings({
+           contextEngineHost: OPENCLAW_EMBEDDED_CONTEXT_ENGINE_HOST,
+@@ -2797,11 +2801,26 @@ export async function runEmbeddedAttempt(
+                 }),
+             }),
+           runtimeSettings: contextEngineLoopRuntimeSettings,
++          onAssemblyStateChange: (state) => {
++            contextEngineLoopAssemblyState = state;
++          },
+           isHeartbeat: isHeartbeatLifecycleRunKind(params.bootstrapContextRunKind),
+         });
+         const removeGuard = installToolResultContextGuard({
+           agent: activeSession.agent,
+           contextWindowTokens: contextTokenBudgetForGuard,
++          isContextEngineAssemblyAuthoritative: () => {
++            const loopState = contextEngineLoopAssemblyState;
++            if (loopState) {
++              return (
++                loopState.succeeded && loopState.promptAuthority !== "preassembly_may_overflow"
++              );
++            }
++            return (
++              contextEngineAssemblySucceeded &&
++              contextEnginePromptAuthority !== "preassembly_may_overflow"
++            );
++          },
+           ...midTurnPrecheckOptions,
+         });
+         removeToolResultContextGuard = () => {
+diff --git a/src/agents/embedded-agent-runner/tool-result-context-guard.test.ts b/src/agents/embedded-agent-runner/tool-result-context-guard.test.ts
+index d7b43bd6..ee9fac9c 100644
+--- a/src/agents/embedded-agent-runner/tool-result-context-guard.test.ts
++++ b/src/agents/embedded-agent-runner/tool-result-context-guard.test.ts
+@@ -540,11 +540,32 @@ describe("installContextEngineLoopHook", () => {
+     } = {},
+   ): () => void {
+     // Install engine assembly before the generic guard to prove owner compaction
+-    // can resolve pressure before fallback truncation checks run.
+-    const removeEngineHook = installHook(agent, engine, options.prePromptCount);
++    // can resolve pressure before fallback truncation checks run. The guard
++    // consumes per-call assembly authority rather than trusting ownsCompaction
++    // as a permanent bypass.
++    let assemblySucceeded = false;
++    let promptAuthority: "assembled" | "preassembly_may_overflow" = "assembled";
++    const removeEngineHook = installContextEngineLoopHook({
++      agent,
++      contextEngine: engine,
++      sessionId,
++      sessionKey,
++      sessionFile,
++      tokenBudget,
++      modelId,
++      ...(options.prePromptCount !== undefined
++        ? { getPrePromptMessageCount: () => options.prePromptCount as number }
++        : {}),
++      onAssemblyStateChange: (state) => {
++        assemblySucceeded = state.succeeded;
++        promptAuthority = state.promptAuthority;
++      },
++    });
+     const removeGuard = installToolResultContextGuard({
+       agent,
+       contextWindowTokens: options.contextWindowTokens ?? 200_000,
++      isContextEngineAssemblyAuthoritative: () =>
++        assemblySucceeded && promptAuthority !== "preassembly_may_overflow",
+       midTurnPrecheck: {
+         enabled: true,
+         contextTokenBudget: options.contextTokenBudget ?? 20_000,
+@@ -593,9 +614,15 @@ describe("installContextEngineLoopHook", () => {
+     expect(engine.assemble).not.toHaveBeenCalled();
+   });
+
+-  it("keeps the pressure guard active around ownsCompaction loop assembly", async () => {
++  it("keeps the pressure guard active for preassembly_may_overflow loop assembly", async () => {
+     const agent = makeGuardableAgent();
+-    const engine = makeMockEngine();
++    const engine = makeMockEngine({
++      assemble: async (params) => ({
++        messages: params.messages,
++        estimatedTokens: 0,
++        promptAuthority: "preassembly_may_overflow",
++      }),
++    });
+     installOwnsCompactionHookWithGuard(agent, engine, {
+       prePromptCount: 1,
+       contextWindowTokens: 200_000,
+@@ -611,6 +638,57 @@ describe("installContextEngineLoopHook", () => {
+     expect(engine.assemble).toHaveBeenCalledTimes(1);
+   });
+
++  it("skips heuristic pressure checks after authoritative loop assembly", async () => {
++    const agent = makeGuardableAgent();
++    const engine = makeMockEngine();
++    installOwnsCompactionHookWithGuard(agent, engine, {
++      prePromptCount: 1,
++      contextWindowTokens: 1_000,
++      contextTokenBudget: 20_000,
++      reserveTokens: 0,
++      toolResultMaxChars: 16_000,
++    });
++
++    const messages = [
++      makeUser(`first ${"u".repeat(5_000)}`),
++      makeToolResult("call_1", "small result"),
++    ];
++    const transformed = await callTransform(agent, messages);
++    const cachedTransform = await callTransform(agent, messages);
++
++    expect(transformed).toBe(messages);
++    expect(cachedTransform).toBe(messages);
++    expect(engine.afterTurn).toHaveBeenCalledTimes(1);
++    expect(engine.assemble).toHaveBeenCalledTimes(1);
++  });
++
++  it("restores heuristic pressure checks when loop assembly fails", async () => {
++    const agent = makeGuardableAgent();
++    const engine = makeMockEngine({
++      assemble: async () => {
++        throw new Error("assemble failed");
++      },
++    });
++    installOwnsCompactionHookWithGuard(agent, engine, {
++      prePromptCount: 1,
++      contextWindowTokens: 1_000,
++      contextTokenBudget: 20_000,
++      reserveTokens: 0,
++      toolResultMaxChars: 16_000,
++    });
++
++    const messages = [
++      makeUser(`first ${"u".repeat(5_000)}`),
++      makeToolResult("call_1", "small result"),
++    ];
++
++    await expect(callTransform(agent, messages)).rejects.toThrow(
++      PREEMPTIVE_CONTEXT_OVERFLOW_MESSAGE,
++    );
++    expect(engine.afterTurn).toHaveBeenCalledTimes(1);
++    expect(engine.assemble).toHaveBeenCalledTimes(1);
++  });
++
+   it("lets ownsCompaction assembly resolve pressure before the generic guard checks", async () => {
+     const agent = makeGuardableAgent();
+     const compactedView = [makeUser("compacted")];
+diff --git a/src/agents/embedded-agent-runner/tool-result-context-guard.ts b/src/agents/embedded-agent-runner/tool-result-context-guard.ts
+index 02dc292c..0007c6e7 100644
+--- a/src/agents/embedded-agent-runner/tool-result-context-guard.ts
++++ b/src/agents/embedded-agent-runner/tool-result-context-guard.ts
+@@ -2,6 +2,7 @@
+  * Installs context guards for oversized tool-result histories.
+  */
+ import type {
++  AssembleResult,
+   ContextEngine,
+   ContextEngineRuntimeContext,
+   ContextEngineRuntimeSettings,
+@@ -339,6 +340,10 @@ export function installContextEngineLoopHook(params: {
+     prePromptMessageCount: number;
+   }) => ContextEngineRuntimeContext | undefined;
+   runtimeSettings?: ContextEngineRuntimeSettings;
++  onAssemblyStateChange?: (state: {
++    succeeded: boolean;
++    promptAuthority: NonNullable<AssembleResult["promptAuthority"]>;
++  }) => void;
+   /** True when this turn belongs to a heartbeat run. */
+   isHeartbeat?: boolean;
+ }): () => void {
+@@ -373,6 +378,10 @@ export function installContextEngineLoopHook(params: {
+     if (sourceHistoryChanged) {
+       lastSeenLength = null;
+       lastAssembledView = null;
++      params.onAssemblyStateChange?.({
++        succeeded: false,
++        promptAuthority: "assembled",
++      });
+     }
+
+     // Seed the loop fence from the attempt's pre-prompt message count when available.
+@@ -392,6 +401,10 @@ export function installContextEngineLoopHook(params: {
+       lastSourceMessages = transcriptMessages;
+       return lastAssembledView ?? providerMessages;
+     }
++    params.onAssemblyStateChange?.({
++      succeeded: false,
++      promptAuthority: "assembled",
++    });
+     try {
+       if (typeof contextEngine.afterTurn === "function") {
+         await contextEngine.afterTurn({
+@@ -442,6 +455,11 @@ export function installContextEngineLoopHook(params: {
+         runtimeSettings: params.runtimeSettings,
+       });
+       if (assembled && Array.isArray(assembled.messages)) {
++        const promptAuthority = assembled.promptAuthority ?? "assembled";
++        params.onAssemblyStateChange?.({
++          succeeded: true,
++          promptAuthority,
++        });
+         const repairedMessages =
+           params.repairAssembledMessages?.(assembled.messages) ?? assembled.messages;
+         if (repairedMessages !== providerMessages || assembled.messages !== providerMessages) {
+@@ -452,10 +470,15 @@ export function installContextEngineLoopHook(params: {
+       lastAssembledView = null;
+     } catch {
+       // Best-effort: any engine failure falls through to the raw source
+-      // messages so the tool loop still makes forward progress.
++      // messages so the tool loop still makes forward progress. Keep the host
++      // pressure guard active because no authoritative assembly was produced.
+       lastSeenLength = prePromptMessageCount;
+       lastAssembledView = null;
+       lastSourceMessages = transcriptMessages;
++      params.onAssemblyStateChange?.({
++        succeeded: false,
++        promptAuthority: "assembled",
++      });
+     }
+
+     return providerMessages;
+@@ -470,6 +493,7 @@ export function installToolResultContextGuard(params: {
+   agent: GuardableAgent;
+   contextWindowTokens: number;
+   midTurnPrecheck?: MidTurnPrecheckOptions;
++  isContextEngineAssemblyAuthoritative?: () => boolean;
+ }): () => void {
+   const contextWindowTokens = Math.max(1, Math.floor(params.contextWindowTokens));
+   const maxContextChars = Math.max(
+@@ -507,7 +531,9 @@ export function installToolResultContextGuard(params: {
+         maxSingleToolResultChars,
+       });
+     }
+-    if (params.midTurnPrecheck?.enabled) {
++    const contextEngineAssemblyAuthoritative =
++      params.isContextEngineAssemblyAuthoritative?.() === true;
++    if (params.midTurnPrecheck?.enabled && !contextEngineAssemblyAuthoritative) {
+       const prePromptMessageCount = Math.max(
+         0,
+         Math.min(
+@@ -550,14 +576,26 @@ export function installToolResultContextGuard(params: {
+         }
+       }
+       lastSeenLength = contextMessages.length;
++    } else if (params.midTurnPrecheck?.enabled) {
++      // Advance the fence even while the engine's authoritative assembly owns
++      // pressure accounting. If a later assembly fails, the host guard should
++      // inspect only tool results appended after this successfully assembled view.
++      lastSeenLength = contextMessages.length;
+     }
+-    if (
+-      exceedsPreemptiveOverflowThreshold({
+-        messages: contextMessages,
+-        maxContextChars,
+-      })
+-    ) {
+-      throw new Error(PREEMPTIVE_CONTEXT_OVERFLOW_MESSAGE);
++    if (!contextEngineAssemblyAuthoritative) {
++      if (
++        exceedsPreemptiveOverflowThreshold({
++          messages: contextMessages,
++          maxContextChars,
++        })
++      ) {
++        throw new Error(PREEMPTIVE_CONTEXT_OVERFLOW_MESSAGE);
++      }
++    } else {
++      log.debug(
++        "[tool-result-guard] skipped heuristic overflow checks: " +
++          "context engine returned an authoritative assembly",
++      );
+     }
+
+     return contextMessages;

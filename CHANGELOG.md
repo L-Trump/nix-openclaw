@@ -8,6 +8,16 @@ This changelog starts with the current pre-1.0 nix-openclaw Home Manager module
 API transition.
 Older repository history is available in git.
 
+## 2026-07-24
+
+### Fixed
+
+- Made the mid-tool tool-result overflow guard honor each context-engine assembly
+  result: authoritative assembled views bypass OpenClaw's heuristic aggregate
+  checks, while assembly failures and `preassembly_may_overflow` results retain
+  the host safety guard. Single oversized tool-result truncation and provider
+  overflow recovery remain active.
+
 ## 2026-07-19
 
 ### Fixed

@@ -37,6 +37,10 @@ if [ -n "${PATCH_CONTEXT_ENGINE_TOOL_TRUNCATION:-}" ]; then
   patch -p1 < "$PATCH_CONTEXT_ENGINE_TOOL_TRUNCATION"
 fi
 
+if [ -n "${PATCH_CONTEXT_ENGINE_AUTHORITATIVE_GUARD:-}" ]; then
+  patch -p1 < "$PATCH_CONTEXT_ENGINE_AUTHORITATIVE_GUARD"
+fi
+
 if [ -f src/logging/logger.ts ]; then
   if ! grep -q "OPENCLAW_LOG_DIR" src/logging/logger.ts; then
     sed -i 's/export const DEFAULT_LOG_DIR = "\/tmp\/openclaw";/export const DEFAULT_LOG_DIR = process.env.OPENCLAW_LOG_DIR ?? "\/tmp\/openclaw";/' src/logging/logger.ts

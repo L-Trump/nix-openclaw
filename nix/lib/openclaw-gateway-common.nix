@@ -161,6 +161,8 @@ let
     PATCH_TOOL_RESULT_AGGREGATE_BUDGET = "${../patches/fix-tool-result-aggregate-budget.patch}";
     PATCH_CONTEXT_ENGINE_TOOL_TRUNCATION =
       "${../patches/defer-persistent-tool-truncation-to-context-engine.patch}";
+    PATCH_CONTEXT_ENGINE_AUTHORITATIVE_GUARD =
+      "${../patches/context-engine-authoritative-tool-guard.patch}";
     PROMOTE_PNPM_INTEGRITY_SH = "${../scripts/promote-pnpm-integrity.sh}";
     REMOVE_PACKAGE_MANAGER_FIELD_SH = "${../scripts/remove-package-manager-field.sh}";
     STDENV_SETUP = "${stdenv}/setup";
