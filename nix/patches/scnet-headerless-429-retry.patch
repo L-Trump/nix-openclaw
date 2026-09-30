@@ -1,0 +1,17 @@
+--- a/src/agents/provider-transport-fetch.ts
++++ b/src/agents/provider-transport-fetch.ts
+@@ -908,7 +908,13 @@
+         `dispatcher=${result.dispatcherReused ? "reused" : "new"} ` +
+         `contentType=${response.headers.get("content-type") ?? ""}`,
+     );
+-    if (shouldBypassLongSdkRetry(response)) {
++    // SCNet's short-lived rate limit does not provide a Retry-After hint.
++    // Preserve the conservative default for all other providers and for
++    // SCNet responses with either retry hint header present.
++    const allowScnetHeaderless429 =
++      model.provider === "scnet" && response.status === 429 &&
++      !response.headers.has("retry-after") && !response.headers.has("retry-after-ms");
++    if (!allowScnetHeaderless429 && shouldBypassLongSdkRetry(response)) {
+       const headers = new Headers(response.headers);
+       headers.set("x-should-retry", "false");
+       response = new Response(response.body, {

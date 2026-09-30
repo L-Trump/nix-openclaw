@@ -86,6 +86,11 @@ try {
   const aggregateSource = fs.readFileSync(path.join(root, aggregateSourcePath), "utf8");
   assert.match(aggregateSource, /contextWindowTokens \* TOOL_RESULT_CHARS_PER_TOKEN_ESTIMATE \* AGGREGATE_TOOL_RESULT_CONTEXT_SHARE/);
   assert.match(aggregateSource, /aggregateReductionQuantumRatio: AGGREGATE_REDUCTION_QUANTUM_RATIO/);
+  const transportPath = "src/agents/provider-transport-fetch.ts";
+  fs.writeFileSync(path.join(root, transportPath), fs.readFileSync(path.join(process.env.OPENCLAW_SOURCE, transportPath)));
+  const scnetPatch = spawnSync("patch", ["--batch", "--fuzz=0", "-p1", "-i", process.env.SCNET_RETRY_PATCH], { cwd: root, encoding: "utf8" });
+  assert.equal(scnetPatch.status, 0, scnetPatch.stdout + scnetPatch.stderr);
+  assert.match(fs.readFileSync(path.join(root, transportPath), "utf8"), /!allowScnetHeaderless429 && shouldBypassLongSdkRetry\(response\)/);
   const pendingGuardPath = "src/agents/session-tool-result-guard.ts";
   fs.writeFileSync(path.join(root, pendingGuardPath), fs.readFileSync(path.join(process.env.OPENCLAW_SOURCE, pendingGuardPath)));
   const pendingPatch = spawnSync("patch", ["--batch", "--fuzz=0", "-p1", "-i", process.env.PENDING_TOOL_TIMESTAMP_PATCH], { cwd: root, encoding: "utf8" });

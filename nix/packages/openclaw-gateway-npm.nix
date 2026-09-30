@@ -61,6 +61,7 @@ buildNpmPackageForOpenClaw {
     OPENCLAW_PATCH_AGGREGATE_BUDGET_SCRIPT = "${
       ../scripts/patch-tool-result-aggregate-budget-npm-dist.mjs
     }";
+    OPENCLAW_PATCH_SCNET_RETRY_SCRIPT = "${../scripts/patch-scnet-retry-npm-dist.mjs}";
     OPENCLAW_PATCH_PENDING_TOOL_TIMESTAMP_SCRIPT = "${
       ../scripts/patch-pending-tool-timestamp-npm-dist.mjs
     }";
