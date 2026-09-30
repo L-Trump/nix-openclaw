@@ -44,6 +44,9 @@ test("official Nix runtime trust requires attested exact root", async () => {
     assert.match(fs.readFileSync(file, "utf8"), /isTrustedNixRuntimePlugin/);
     const syntax = spawnSync(process.execPath, ["--check", file], { encoding: "utf8" });
     assert.equal(syntax.status, 0, syntax.stderr);
+    // Doctor must be able to reread the registry it just persisted in Nix mode.
+    const registry = fs.readFileSync(path.join(dist, "plugin-registry-snapshot-fixture.mjs"), "utf8");
+    assert.equal(registry, fixture["plugin-registry-snapshot-fixture.mjs"]);
   });
   if (storePlugin) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-nix-trust-runtime-"));
@@ -72,7 +75,7 @@ test("official Nix runtime trust requires attested exact root", async () => {
       assert.deepEqual(loadInstalledPluginIndexInstallRecordsSync({ env: managedEnv }), {});
       assert.deepEqual(await loadInstalledPluginIndexInstallRecords({ env: managedEnv }), {});
       assert.deepEqual(loadInstalledPluginIndexInstallRecordsSync({ env: {} }), { old: true });
-      assert.equal(loadPluginRegistrySnapshotWithMetadata({ env: managedEnv }).source, "derived");
+      assert.equal(loadPluginRegistrySnapshotWithMetadata({ env: managedEnv }).source, "persisted");
       assert.equal(loadPluginRegistrySnapshotWithMetadata({ env: {} }).source, "persisted");
     } finally {
       fs.rmSync(root, { recursive: true, force: true });

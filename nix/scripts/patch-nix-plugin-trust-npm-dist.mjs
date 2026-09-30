@@ -44,12 +44,7 @@ source = `${imports}${source}`
   .replace(marker, `${helper}${marker}\tif (isTrustedNixRuntimePlugin(params)) return { reason: "trusted-official", registryPath: params.registryPath, origin: params.candidate.origin };\n`)
   .replace(asyncRecords, `${asyncRecords}\tif ((params.env ?? process.env).OPENCLAW_NIX_MODE === "1" && (params.env ?? process.env).OPENCLAW_NIX_RUNTIME_PLUGIN_ROOTS) return {};\n`)
   .replace(syncRecords, `${syncRecords}\tif ((params.env ?? process.env).OPENCLAW_NIX_MODE === "1" && (params.env ?? process.env).OPENCLAW_NIX_RUNTIME_PLUGIN_ROOTS) return {};\n`);
-const registryOwners = modules.filter((candidate) => fs.readFileSync(path.join(dir, candidate), "utf8").includes("function loadPluginRegistrySnapshotWithMetadata(params = {})"));
-if (registryOwners.length !== 1) throw new Error("plugin registry snapshot owner contract changed");
-const registryPath = path.join(dir, registryOwners[0]);
-const registry = fs.readFileSync(registryPath, "utf8");
-const registryMarker = "if (!(params.preferPersisted !== false)) {";
-if (registry.split(registryMarker).length !== 2) throw new Error("persisted registry read contract changed");
-const guardedRegistry = registry.replace(registryMarker, 'if (!(params.preferPersisted !== false && !(env.OPENCLAW_NIX_MODE === "1" && env.OPENCLAW_NIX_RUNTIME_PLUGIN_ROOTS))) {');
+// Keep upstream's persisted-registry verification: startup migration writes and
+// re-reads the registry before recording its checkpoint. Nix-managed legacy
+// installation records are still ignored by the reader above.
 fs.writeFileSync(path.join(dir, name), source);
-fs.writeFileSync(registryPath, guardedRegistry);

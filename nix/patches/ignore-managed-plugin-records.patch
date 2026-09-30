@@ -30,18 +30,4 @@ diff --git a/src/plugins/installed-plugin-index-record-reader.ts b/src/plugins/i
    const cacheKey = resolveInstallRecordsCacheKey(params);
    const cache = getPluginCache().installRecords;
    const cached = cache.get(cacheKey);
-diff --git a/src/plugins/plugin-registry-snapshot.ts b/src/plugins/plugin-registry-snapshot.ts
---- a/src/plugins/plugin-registry-snapshot.ts
-+++ b/src/plugins/plugin-registry-snapshot.ts
-@@ -422,7 +422,9 @@
-   }
--
-+
-   const env = params.env ?? process.env;
--  const persistedReadsEnabled = params.preferPersisted !== false;
-+  const persistedReadsEnabled =
-+    params.preferPersisted !== false &&
-+    !(env.OPENCLAW_NIX_MODE === "1" && env.OPENCLAW_NIX_RUNTIME_PLUGIN_ROOTS);
-   if (!persistedReadsEnabled) {
-     const derived = loadInstalledPluginIndexWithDiscovery({
        ...params,
