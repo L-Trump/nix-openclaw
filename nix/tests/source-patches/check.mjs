@@ -91,6 +91,14 @@ try {
   const scnetPatch = spawnSync("patch", ["--batch", "--fuzz=0", "-p1", "-i", process.env.SCNET_RETRY_PATCH], { cwd: root, encoding: "utf8" });
   assert.equal(scnetPatch.status, 0, scnetPatch.stdout + scnetPatch.stderr);
   assert.match(fs.readFileSync(path.join(root, transportPath), "utf8"), /!allowScnetHeaderless429 && shouldBypassLongSdkRetry\(response\)/);
+  const sessionsSendPath = "src/agents/tools/sessions-send-tool.ts";
+  fs.mkdirSync(path.dirname(path.join(root, sessionsSendPath)), { recursive: true });
+  fs.writeFileSync(path.join(root, sessionsSendPath), fs.readFileSync(path.join(process.env.OPENCLAW_SOURCE, sessionsSendPath)));
+  const sessionsPatch = spawnSync("patch", ["--batch", "--fuzz=0", "-p1", "-i", process.env.SESSIONS_SEND_PATCH], { cwd: root, encoding: "utf8" });
+  assert.equal(sessionsPatch.status, 0, sessionsPatch.stdout + sessionsPatch.stderr);
+  const schema = fs.readFileSync(path.join(root, sessionsSendPath), "utf8");
+  assert.match(schema, /label: Type.Optional\(Type.String\(\{ minLength: 0/);
+  assert.match(schema, /agentId: Type.Optional\(Type.String\(\{ minLength: 0/);
   const pendingGuardPath = "src/agents/session-tool-result-guard.ts";
   fs.writeFileSync(path.join(root, pendingGuardPath), fs.readFileSync(path.join(process.env.OPENCLAW_SOURCE, pendingGuardPath)));
   const pendingPatch = spawnSync("patch", ["--batch", "--fuzz=0", "-p1", "-i", process.env.PENDING_TOOL_TIMESTAMP_PATCH], { cwd: root, encoding: "utf8" });

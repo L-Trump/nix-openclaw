@@ -1,0 +1,9 @@
+--- a/src/agents/tools/sessions-send-tool.ts
++++ b/src/agents/tools/sessions-send-tool.ts
+@@ -99,2 +99,4 @@
+-  label: Type.Optional(Type.String({ minLength: 1, maxLength: SESSION_LABEL_MAX_LENGTH })),
+-  agentId: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
++  // Models may supply blank optional selectors. Execution normalizes these to
++  // absent before resolving the target; schema validation must let them through.
++  label: Type.Optional(Type.String({ minLength: 0, maxLength: SESSION_LABEL_MAX_LENGTH })),
++  agentId: Type.Optional(Type.String({ minLength: 0, maxLength: 64 })),
