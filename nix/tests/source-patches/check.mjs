@@ -134,6 +134,15 @@ try {
   assert.equal(idlePatch.status, 0, idlePatch.stdout + idlePatch.stderr);
   assert.match(fs.readFileSync(path.join(root, retryFiles[0]), "utf8"), /MAX_CONSECUTIVE_IDLE_TIMEOUTS_BEFORE_OUTPUT = 7/);
   assert.match(fs.readFileSync(path.join(root, retryFiles[2]), "utf8"), /retrySilentIdleTimeout\(\)/);
+  const rhcgFiles = ["src/agents/embedded-agent-runner/extra-params.ts", "ui/src/lib/chat/model-select-state.ts"];
+  for (const file of rhcgFiles) {
+    fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+    fs.writeFileSync(path.join(root, file), fs.readFileSync(path.join(process.env.OPENCLAW_SOURCE, file)));
+  }
+  const rhcgPatch = spawnSync("patch", ["--batch", "--fuzz=0", "-p1", "-i", process.env.RHCG_PAYLOAD_PATCH], { cwd: root, encoding: "utf8" });
+  assert.equal(rhcgPatch.status, 0, rhcgPatch.stdout + rhcgPatch.stderr);
+  assert.match(fs.readFileSync(path.join(root, rhcgFiles[0]), "utf8"), /function createRhcgRequestWrapper\(/);
+  assert.match(fs.readFileSync(path.join(root, rhcgFiles[1]), "utf8"), /"openai", "rhcg", "xai"/);
   const pendingGuardPath = "src/agents/session-tool-result-guard.ts";
   fs.writeFileSync(path.join(root, pendingGuardPath), fs.readFileSync(path.join(process.env.OPENCLAW_SOURCE, pendingGuardPath)));
   const pendingPatch = spawnSync("patch", ["--batch", "--fuzz=0", "-p1", "-i", process.env.PENDING_TOOL_TIMESTAMP_PATCH], { cwd: root, encoding: "utf8" });

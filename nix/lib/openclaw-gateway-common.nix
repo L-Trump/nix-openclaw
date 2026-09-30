@@ -165,6 +165,7 @@ let
     PATCH_CONTEXT_ENGINE_OWNED_TOOL_RESULTS = "${../patches/context-engine-owned-tool-results.patch}";
     PATCH_RETRY_DEFAULTS = "${../patches/retry-defaults.patch}";
     PATCH_REPLAY_SAFE_IDLE_RETRY = "${../patches/replay-safe-idle-retry.patch}";
+    PATCH_RHCG_OPENAI_COMPAT = "${../patches/rhcg-openai-compatible-payload.patch}";
     PATCH_PENDING_TOOL_RESULT_TIMESTAMP = "${../patches/pending-tool-result-timestamp.patch}";
     OPENCLAW_RUNTIME_LAYOUT_SH = "${../scripts/openclaw-stage-runtime.sh}";
     PNPM_BUILD_ENV_SH = "${../scripts/pnpm-build-env.sh}";

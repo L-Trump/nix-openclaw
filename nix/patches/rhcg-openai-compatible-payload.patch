@@ -1,0 +1,67 @@
+--- a/src/agents/embedded-agent-runner/extra-params.ts
++++ b/src/agents/embedded-agent-runner/extra-params.ts
+@@ -0,0 +1 @@
++import { normalizeFastMode } from "@openclaw/normalization-core/string-coerce";
+@@ -742,0 +744,53 @@
++// Only RHCG's explicitly declared OpenAI-compatible reasoning models get the
++// vendor's scalar effort. Other compatible providers keep their own policy.
++function createRhcgRequestWrapper(
++  streamFn: StreamFn,
++  thinkingLevel: ProviderThinkLevel | undefined,
++  params: Record<string, unknown> | undefined,
++): StreamFn {
++  return (model, context, options) => {
++    if (
++      model.provider !== "rhcg" ||
++      (model.api !== "openai-responses" && model.api !== "openai-completions")
++    ) {
++      return streamFn(model, context, options);
++    }
++    const explicitTier = resolveAliasedParamValueFromKeys([params], ["serviceTier", "service_tier"]);
++    const normalizedTier = typeof explicitTier === "string" ? explicitTier.trim().toLowerCase() : "";
++    const tier = ["auto", "default", "flex", "priority"].includes(normalizedTier)
++      ? normalizedTier
++      : normalizeFastMode(resolveAliasedParamValueFromKeys([params], ["fastMode", "fast_mode"])) === true
++        ? "priority"
++        : undefined;
++    const effort = thinkingLevel === "max" ? "max" : thinkingLevel;
++    const compat = model.compat;
++    const supportsEffort =
++      model.reasoning === true &&
++      compat?.supportsReasoningEffort !== false &&
++      Array.isArray(compat?.supportedReasoningEfforts) &&
++      compat.supportedReasoningEfforts.includes(effort ?? "");
++    return streamWithPayloadPatch(streamFn, model, context, options, (payload) => {
++      if (tier !== undefined && payload.service_tier === undefined) {
++        payload.service_tier = tier;
++      }
++      if (thinkingLevel === "off") {
++        if (model.api === "openai-responses") {
++          delete payload.reasoning;
++        } else {
++          delete payload.reasoning_effort;
++        }
++      } else if (supportsEffort && effort) {
++        if (model.api === "openai-responses") {
++          const existing = payload.reasoning;
++          payload.reasoning = {
++            ...(existing && typeof existing === "object" && !Array.isArray(existing) ? existing : {}),
++            effort,
++          };
++        } else {
++          payload.reasoning_effort = effort;
++        }
++      }
++    });
++  };
++}
++
+@@ -752,0 +807,3 @@
++  if (ctx.provider === "rhcg" && ctx.agent.streamFn) {
++    ctx.agent.streamFn = createRhcgRequestWrapper(ctx.agent.streamFn, ctx.thinkingLevel, streamParams);
++  }
+--- a/ui/src/lib/chat/model-select-state.ts
++++ b/ui/src/lib/chat/model-select-state.ts
+@@ -80 +80 @@
+-const FAST_MODE_PROVIDER_IDS = new Set(["anthropic", "minimax", "minimax-portal", "openai", "xai"]);
++const FAST_MODE_PROVIDER_IDS = new Set(["anthropic", "minimax", "minimax-portal", "openai", "rhcg", "xai"]);

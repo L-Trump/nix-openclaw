@@ -23,6 +23,7 @@ stdenvNoCC.mkDerivation {
   CONTEXT_ENGINE_PATCH = ../patches/context-engine-owned-tool-results.patch;
   RETRY_DEFAULTS_PATCH = ../patches/retry-defaults.patch;
   IDLE_RETRY_PATCH = ../patches/replay-safe-idle-retry.patch;
+  RHCG_PAYLOAD_PATCH = ../patches/rhcg-openai-compatible-payload.patch;
   PENDING_TOOL_TIMESTAMP_PATCH = ../patches/pending-tool-result-timestamp.patch;
   doCheck = true;
   checkPhase = "node ${../tests/source-patches/check.mjs}";

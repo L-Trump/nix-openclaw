@@ -14,6 +14,7 @@ Older repository history is available in git.
 - Keep context-engine-owned session history intact during mid-turn and overflow recovery; bypass the heuristic tool guard only after authoritative per-call assembly, and bound fresh tool results in the final provider projection (OpenClaw 2026.9.5).
 - Default the provider retry budget to four and ordinary cloud LLM idle progress to 300 seconds, preserving explicit settings and the shorter cron watchdog (OpenClaw 2026.9.5).
 - Before profile rotation, retry replay-safe silent idle failures on the same model with bounded backoff, allowing five retries plus one existing transition under a seven-attempt paid-call breaker (OpenClaw 2026.9.5).
+- Restore RHCG's explicitly advertised OpenAI-compatible `xhigh`/`max` effort and fast/service-tier request fields for Responses and Chat Completions, without changing other providers' payloads; expose fast mode in the Control UI (OpenClaw 2026.9.5).
 - Refresh Nixpkgs, Home Manager, bundled OpenClaw tools and example-plugin inputs, and update the private pnpm 11 runtime to 11.27.0.
 - Refresh Nix inputs and the example plugin lock, and update private source-build pnpm runtimes to 11.27.1 and 12.6.0.
 - Prevent newly published backports from downgrading the selected gateway or macOS app; order stable releases and numeric corrections by version.

@@ -48,6 +48,10 @@ if [ -n "${PATCH_REPLAY_SAFE_IDLE_RETRY:-}" ]; then
   patch -p1 < "$PATCH_REPLAY_SAFE_IDLE_RETRY"
 fi
 
+if [ -n "${PATCH_RHCG_OPENAI_COMPAT:-}" ]; then
+  patch -p1 < "$PATCH_RHCG_OPENAI_COMPAT"
+fi
+
 if [ -n "${PATCH_PENDING_TOOL_RESULT_TIMESTAMP:-}" ]; then
   patch -p1 < "$PATCH_PENDING_TOOL_RESULT_TIMESTAMP"
 fi
