@@ -116,6 +116,14 @@ try {
   assert.match(guard, /isContextEngineAssemblyAuthoritative\?\.\(\)/);
   assert.match(recovery, /input\.contextEngine\.info\.ownsCompaction !== true/);
   assert.match(fs.readFileSync(path.join(root, aggregateSourcePath), "utf8"), /projectionOptions\?\.protectTrailingToolResults/);
+  for (const file of ["src/agents/sessions/settings-manager.ts", "src/agents/embedded-agent-runner/run/llm-idle-timeout.ts"]) {
+    fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+    fs.writeFileSync(path.join(root, file), fs.readFileSync(path.join(process.env.OPENCLAW_SOURCE, file)));
+  }
+  const retryPatch = spawnSync("patch", ["--batch", "--fuzz=0", "-p1", "-i", process.env.RETRY_DEFAULTS_PATCH], { cwd: root, encoding: "utf8" });
+  assert.equal(retryPatch.status, 0, retryPatch.stdout + retryPatch.stderr);
+  assert.match(fs.readFileSync(path.join(root, "src/agents/sessions/settings-manager.ts"), "utf8"), /maxRetries: this\.settings\.retry\?\.provider\?\.maxRetries \?\? 4/);
+  assert.match(fs.readFileSync(path.join(root, "src/agents/embedded-agent-runner/run/llm-idle-timeout.ts"), "utf8"), /DEFAULT_LLM_IDLE_TIMEOUT_MS = 300_000/);
   const pendingGuardPath = "src/agents/session-tool-result-guard.ts";
   fs.writeFileSync(path.join(root, pendingGuardPath), fs.readFileSync(path.join(process.env.OPENCLAW_SOURCE, pendingGuardPath)));
   const pendingPatch = spawnSync("patch", ["--batch", "--fuzz=0", "-p1", "-i", process.env.PENDING_TOOL_TIMESTAMP_PATCH], { cwd: root, encoding: "utf8" });

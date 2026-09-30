@@ -12,6 +12,7 @@ Older repository history is available in git.
 - Retry SCNet's headerless transient HTTP 429 responses while retaining upstream's conservative long-retry guard for other providers and hinted responses (OpenClaw 2026.9.5).
 - Accept blank optional `sessions_send` label and agent selectors at tool validation, letting the existing execution normalization treat them as omitted (OpenClaw 2026.9.5).
 - Keep context-engine-owned session history intact during mid-turn and overflow recovery; bypass the heuristic tool guard only after authoritative per-call assembly, and bound fresh tool results in the final provider projection (OpenClaw 2026.9.5).
+- Default the provider retry budget to four and ordinary cloud LLM idle progress to 300 seconds, preserving explicit settings and the shorter cron watchdog (OpenClaw 2026.9.5).
 - Refresh Nixpkgs, Home Manager, bundled OpenClaw tools and example-plugin inputs, and update the private pnpm 11 runtime to 11.27.0.
 - Refresh Nix inputs and the example plugin lock, and update private source-build pnpm runtimes to 11.27.1 and 12.6.0.
 - Prevent newly published backports from downgrading the selected gateway or macOS app; order stable releases and numeric corrections by version.

@@ -1,0 +1,10 @@
+--- a/src/agents/sessions/settings-manager.ts
++++ b/src/agents/sessions/settings-manager.ts
+@@ -482 +482 @@
+-      maxRetries: this.settings.retry?.provider?.maxRetries,
++      maxRetries: this.settings.retry?.provider?.maxRetries ?? 4,
+--- a/src/agents/embedded-agent-runner/run/llm-idle-timeout.ts
++++ b/src/agents/embedded-agent-runner/run/llm-idle-timeout.ts
+@@ -28 +28 @@
+-const DEFAULT_LLM_IDLE_TIMEOUT_MS = 120_000;
++const DEFAULT_LLM_IDLE_TIMEOUT_MS = 300_000;

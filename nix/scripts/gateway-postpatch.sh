@@ -40,6 +40,10 @@ if [ -n "${PATCH_CONTEXT_ENGINE_OWNED_TOOL_RESULTS:-}" ]; then
   patch -p1 < "$PATCH_CONTEXT_ENGINE_OWNED_TOOL_RESULTS"
 fi
 
+if [ -n "${PATCH_RETRY_DEFAULTS:-}" ]; then
+  patch -p1 < "$PATCH_RETRY_DEFAULTS"
+fi
+
 if [ -n "${PATCH_PENDING_TOOL_RESULT_TIMESTAMP:-}" ]; then
   patch -p1 < "$PATCH_PENDING_TOOL_RESULT_TIMESTAMP"
 fi

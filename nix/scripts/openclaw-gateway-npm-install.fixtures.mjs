@@ -158,6 +158,7 @@ fs.writeFileSync(path.join(process.env.OPENCLAW_PACKAGE_ROOT, "patch-seen"), "pa
           OPENCLAW_PATCH_SCNET_RETRY_SCRIPT: patcher,
           OPENCLAW_PATCH_SESSIONS_SEND_SCRIPT: patcher,
           OPENCLAW_PATCH_CONTEXT_ENGINE_SCRIPT: patcher,
+          OPENCLAW_PATCH_RETRY_DEFAULTS_SCRIPT: patcher,
           OPENCLAW_PATCH_PENDING_TOOL_TIMESTAMP_SCRIPT: patcher,
           OPENCLAW_BUNDLED_ACPX: acpx,
         },
