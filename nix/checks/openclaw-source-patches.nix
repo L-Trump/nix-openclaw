@@ -22,6 +22,7 @@ stdenvNoCC.mkDerivation {
   SESSIONS_SEND_PATCH = ../patches/sessions-send-empty-selector.patch;
   CONTEXT_ENGINE_PATCH = ../patches/context-engine-owned-tool-results.patch;
   RETRY_DEFAULTS_PATCH = ../patches/retry-defaults.patch;
+  IDLE_RETRY_PATCH = ../patches/replay-safe-idle-retry.patch;
   PENDING_TOOL_TIMESTAMP_PATCH = ../patches/pending-tool-result-timestamp.patch;
   doCheck = true;
   checkPhase = "node ${../tests/source-patches/check.mjs}";

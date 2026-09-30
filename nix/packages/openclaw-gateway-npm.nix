@@ -69,6 +69,7 @@ buildNpmPackageForOpenClaw {
       ../scripts/patch-context-engine-owned-tool-results-npm-dist.mjs
     }";
     OPENCLAW_PATCH_RETRY_DEFAULTS_SCRIPT = "${../scripts/patch-retry-defaults-npm-dist.mjs}";
+    OPENCLAW_PATCH_IDLE_RETRY_SCRIPT = "${../scripts/patch-replay-safe-idle-retry-npm-dist.mjs}";
     OPENCLAW_PATCH_PENDING_TOOL_TIMESTAMP_SCRIPT = "${
       ../scripts/patch-pending-tool-timestamp-npm-dist.mjs
     }";

@@ -124,6 +124,16 @@ try {
   assert.equal(retryPatch.status, 0, retryPatch.stdout + retryPatch.stderr);
   assert.match(fs.readFileSync(path.join(root, "src/agents/sessions/settings-manager.ts"), "utf8"), /maxRetries: this\.settings\.retry\?\.provider\?\.maxRetries \?\? 4/);
   assert.match(fs.readFileSync(path.join(root, "src/agents/embedded-agent-runner/run/llm-idle-timeout.ts"), "utf8"), /DEFAULT_LLM_IDLE_TIMEOUT_MS = 300_000/);
+  const retryFiles = ["idle-timeout-breaker", "failover-retry-controller", "attempt-recovery"].map(
+    (name) => `src/agents/embedded-agent-runner/run/${name}.ts`,
+  );
+  for (const file of retryFiles) {
+    fs.writeFileSync(path.join(root, file), fs.readFileSync(path.join(process.env.OPENCLAW_SOURCE, file)));
+  }
+  const idlePatch = spawnSync("patch", ["--batch", "--fuzz=0", "-p1", "-i", process.env.IDLE_RETRY_PATCH], { cwd: root, encoding: "utf8" });
+  assert.equal(idlePatch.status, 0, idlePatch.stdout + idlePatch.stderr);
+  assert.match(fs.readFileSync(path.join(root, retryFiles[0]), "utf8"), /MAX_CONSECUTIVE_IDLE_TIMEOUTS_BEFORE_OUTPUT = 7/);
+  assert.match(fs.readFileSync(path.join(root, retryFiles[2]), "utf8"), /retrySilentIdleTimeout\(\)/);
   const pendingGuardPath = "src/agents/session-tool-result-guard.ts";
   fs.writeFileSync(path.join(root, pendingGuardPath), fs.readFileSync(path.join(process.env.OPENCLAW_SOURCE, pendingGuardPath)));
   const pendingPatch = spawnSync("patch", ["--batch", "--fuzz=0", "-p1", "-i", process.env.PENDING_TOOL_TIMESTAMP_PATCH], { cwd: root, encoding: "utf8" });

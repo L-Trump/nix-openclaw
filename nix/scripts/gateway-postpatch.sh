@@ -44,6 +44,10 @@ if [ -n "${PATCH_RETRY_DEFAULTS:-}" ]; then
   patch -p1 < "$PATCH_RETRY_DEFAULTS"
 fi
 
+if [ -n "${PATCH_REPLAY_SAFE_IDLE_RETRY:-}" ]; then
+  patch -p1 < "$PATCH_REPLAY_SAFE_IDLE_RETRY"
+fi
+
 if [ -n "${PATCH_PENDING_TOOL_RESULT_TIMESTAMP:-}" ]; then
   patch -p1 < "$PATCH_PENDING_TOOL_RESULT_TIMESTAMP"
 fi

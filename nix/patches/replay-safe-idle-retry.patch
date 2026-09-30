@@ -1,0 +1,68 @@
+--- a/src/agents/embedded-agent-runner/run/idle-timeout-breaker.ts
++++ b/src/agents/embedded-agent-runner/run/idle-timeout-breaker.ts
+@@ -15 +15,3 @@
+-export const MAX_CONSECUTIVE_IDLE_TIMEOUTS_BEFORE_OUTPUT = 5;
++// One initial request, up to five replay-safe same-model retries, then one
++// existing profile/fallback transition before halting a silent paid-call loop.
++export const MAX_CONSECUTIVE_IDLE_TIMEOUTS_BEFORE_OUTPUT = 7;
+--- a/src/agents/embedded-agent-runner/run/failover-retry-controller.ts
++++ b/src/agents/embedded-agent-runner/run/failover-retry-controller.ts
+@@ -67,0 +68 @@
++  let sameModelIdleTimeoutRetries = 0;
+@@ -143,0 +145,24 @@
++    },
++    // Separate from transient outages: the 90s outage window cannot admit a
++    // replay-safe retry after a 300s idle wait. Keep one counter across attempts.
++    retrySilentIdleTimeout: async (): Promise<boolean> => {
++      if (sameModelIdleTimeoutRetries >= 5) {
++        return false;
++      }
++      const retryIndex = sameModelIdleTimeoutRetries;
++      const backoffMs = Math.min(30_000, 2_000 * 2 ** retryIndex);
++      const delayMs = Math.min(30_000, backoffMs + Math.floor(backoffMs * 0.1 * Math.random()));
++      log.warn(
++        `[stream-retry] retrying replay-safe idle timeout on same model ${retryIndex + 1}/5 ` +
++          `for ${sanitizeForLog(provider)}/${sanitizeForLog(modelId)}: delayMs=${delayMs}`,
++      );
++      const closeRetryWait = params.onRetryWait?.(Date.now() + delayMs, params.abortSignal);
++      let completed = false;
++      try {
++        await sleepWithAbort(delayMs, params.abortSignal);
++        completed = true;
++      } finally {
++        closeRetryWait?.(completed);
++      }
++      sameModelIdleTimeoutRetries += 1;
++      return true;
+--- a/src/agents/embedded-agent-runner/run/attempt-recovery.ts
++++ b/src/agents/embedded-agent-runner/run/attempt-recovery.ts
+@@ -20 +20 @@
+-import { hasAsyncActivity, isCurrentAttemptReplaySafe } from "./attempt-terminal-evidence.js";
++import { hasAsyncActivity, hasAttemptTerminalState, isCurrentAttemptReplaySafe } from "./attempt-terminal-evidence.js";
+@@ -336,0 +337,26 @@
++  // A silent idle stall cannot fit the generic 90s transient outage window.
++  // Retry only an attempt that can safely replay the original prompt; do not
++  // rotate profiles or resubmit after tool/delivery/approval side effects.
++  if (
++    timedOut &&
++    idleTimedOut &&
++    currentAttemptReplaySafe &&
++    !hasAttemptTerminalState(attempt) &&
++    canRestartForLiveSwitch &&
++    !externalAbort &&
++    !signalOwnedInterruption &&
++    !timedOutDuringCompaction &&
++    !timedOutDuringToolExecution &&
++    !timedOutByRunBudget &&
++    !runtime.pluginHarnessOwnsTransport &&
++    !attempt.codexAppServerFailure &&
++    !attempt.yieldDetected &&
++    !attempt.clientToolCalls &&
++    !attempt.didSendDeterministicApprovalPrompt &&
++    !resolveReplayInvalidForAttempt(null) &&
++    (await failoverRetryController.retrySilentIdleTimeout())
++  ) {
++    runInput.laneController.throwIfAborted();
++    sessionPromptState.markOwnedTranscriptRetry();
++    return retry({ lastRetryFailoverReason: "timeout" });
++  }
