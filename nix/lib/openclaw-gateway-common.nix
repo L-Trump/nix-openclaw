@@ -167,6 +167,7 @@ let
     PATCH_REPLAY_SAFE_IDLE_RETRY = "${../patches/replay-safe-idle-retry.patch}";
     PATCH_RHCG_OPENAI_COMPAT = "${../patches/rhcg-openai-compatible-payload.patch}";
     PATCH_PENDING_TOOL_RESULT_TIMESTAMP = "${../patches/pending-tool-result-timestamp.patch}";
+    PATCH_FEISHU_SESSION_STREAMING = "${../patches/feishu-session-owned-streaming.patch}";
     OPENCLAW_RUNTIME_LAYOUT_SH = "${../scripts/openclaw-stage-runtime.sh}";
     PNPM_BUILD_ENV_SH = "${../scripts/pnpm-build-env.sh}";
     RESTORE_PNPM_STORE_SCRIPT = "${../scripts/restore-pnpm-store.mjs}";

@@ -25,6 +25,7 @@ stdenvNoCC.mkDerivation {
   IDLE_RETRY_PATCH = ../patches/replay-safe-idle-retry.patch;
   RHCG_PAYLOAD_PATCH = ../patches/rhcg-openai-compatible-payload.patch;
   PENDING_TOOL_TIMESTAMP_PATCH = ../patches/pending-tool-result-timestamp.patch;
+  FEISHU_STREAMING_PATCH = ../patches/feishu-session-owned-streaming.patch;
   doCheck = true;
   checkPhase = "node ${../tests/source-patches/check.mjs}";
   installPhase = "${../scripts/empty-install.sh}";

@@ -148,6 +148,14 @@ try {
   const pendingPatch = spawnSync("patch", ["--batch", "--fuzz=0", "-p1", "-i", process.env.PENDING_TOOL_TIMESTAMP_PATCH], { cwd: root, encoding: "utf8" });
   assert.equal(pendingPatch.status, 0, pendingPatch.stdout + pendingPatch.stderr);
   assert.match(fs.readFileSync(path.join(root, pendingGuardPath), "utf8"), /sourceTimestamp: entry\.timestamp/);
+  const feishuPath = "extensions/feishu/src/reply-dispatcher.ts";
+  fs.mkdirSync(path.dirname(path.join(root, feishuPath)), { recursive: true });
+  fs.writeFileSync(path.join(root, feishuPath), fs.readFileSync(path.join(process.env.OPENCLAW_SOURCE, feishuPath)));
+  const feishuPatch = spawnSync("patch", ["--batch", "--fuzz=0", "-p1", "-i", process.env.FEISHU_STREAMING_PATCH], { cwd: root, encoding: "utf8" });
+  assert.equal(feishuPatch.status, 0, feishuPatch.stdout + feishuPatch.stderr);
+  const feishu = fs.readFileSync(path.join(root, feishuPath), "utf8");
+  assert.match(feishu, /await Promise\.all\(updatesToClose\)/);
+  assert.doesNotMatch(feishu, /partialUpdateQueue/);
   console.log("pinned source patch application, caller environment, ownership and path guards: PASS");
 } finally {
   fs.rmSync(root, { recursive: true, force: true });

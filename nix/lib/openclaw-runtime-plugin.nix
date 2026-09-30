@@ -111,6 +111,7 @@ let
 
       env = {
         OPENCLAW_RUNTIME_PLUGIN_ID = lock.id;
+        OPENCLAW_FEISHU_STREAMING_PATCH_SCRIPT = "${../scripts/patch-feishu-session-streaming.mjs}";
         OPENCLAW_RUNTIME_PLUGIN_PACKAGE_NAME = lock.packageName or "";
         OPENCLAW_RUNTIME_PLUGIN_VERSION = lock.version or "";
         OPENCLAW_RUNTIME_PLUGIN_TRUSTED_OFFICIAL =

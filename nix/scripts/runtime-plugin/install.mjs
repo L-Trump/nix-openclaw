@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import {
   collectPackageRoots,
@@ -152,6 +153,13 @@ if (expectedVersion && packageVersion !== expectedVersion) {
 }
 if (manifest.id !== expectedId) {
   fail(`plugin id mismatch: expected ${expectedId}, got ${manifest.id}`);
+}
+if (expectedId === "feishu" && packageName === "@openclaw/feishu") {
+  const patchScript = requiredEnv("OPENCLAW_FEISHU_STREAMING_PATCH_SCRIPT");
+  const result = spawnSync(process.execPath, [patchScript, out], { encoding: "utf8" });
+  if (result.status !== 0) {
+    fail(`Feishu streaming patch failed: ${result.stderr || result.error?.message || result.status}`);
+  }
 }
 if (trustedOfficial) {
   if (!expectedPackageName || !expectedVersion) {
