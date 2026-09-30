@@ -1,0 +1,13 @@
+--- a/extensions/opencode-go/stream.ts
++++ b/extensions/opencode-go/stream.ts
+@@ -58,7 +58,10 @@ function createOpencodeGoDeepSeekWrapper(
+   return createDeepSeekV4OpenAICompatibleThinkingWrapper({
+     baseStreamFn: flashStreamFn,
+     thinkingLevel,
+-    shouldPatchModel: (model) => model.provider === "opencode-go" && model.id === "deepseek-v4-pro",
++    // OpenCode Go exposes V4.1 Flash as deepseek-flash with the same high/max wire contract.
++    shouldPatchModel: (model) =>
++      model.provider === "opencode-go" &&
++      (model.id === "deepseek-v4-pro" || model.id === "deepseek-flash"),
+   });
+ }

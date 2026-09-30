@@ -71,6 +71,7 @@ buildNpmPackageForOpenClaw {
     OPENCLAW_PATCH_RETRY_DEFAULTS_SCRIPT = "${../scripts/patch-retry-defaults-npm-dist.mjs}";
     OPENCLAW_PATCH_IDLE_RETRY_SCRIPT = "${../scripts/patch-replay-safe-idle-retry-npm-dist.mjs}";
     OPENCLAW_PATCH_RHCG_PAYLOAD_SCRIPT = "${../scripts/patch-rhcg-payload-npm-dist.mjs}";
+    OPENCLAW_PATCH_OPENCODE_GO_DEEPSEEK_FLASH_SCRIPT = "${../scripts/patch-opencode-go-deepseek-flash-npm-dist.mjs}";
     OPENCLAW_PATCH_PENDING_TOOL_TIMESTAMP_SCRIPT = "${
       ../scripts/patch-pending-tool-timestamp-npm-dist.mjs
     }";

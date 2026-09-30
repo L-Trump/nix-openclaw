@@ -108,6 +108,9 @@
                     inherit (packageSetStable) pnpm_11 pnpm_12;
                   }).src;
               };
+              opencode-go-deepseek-flash = pkgs.callPackage ./nix/checks/openclaw-opencode-go-deepseek-flash.nix {
+                openclawGateway = packageSetStable.openclaw-gateway;
+              };
               source-override-render = pkgs.callPackage ./nix/checks/openclaw-default-instance.nix {
                 includeSourceOverrideChecks = true;
               };
