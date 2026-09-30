@@ -70,6 +70,19 @@ try {
   const records = fs.readFileSync(path.join(root, "src/plugins/installed-plugin-index-record-reader.ts"), "utf8");
   assert.match(trust, /function isTrustedNixRuntimePlugin/);
   assert.match(records, /function managedNixPluginRegistry/);
+  for (const file of ["packages/agent-core/src/harness/session/tool-result-pairing.ts", "src/agents/session-transcript-repair.ts"]) {
+    fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+    fs.writeFileSync(path.join(root, file), fs.readFileSync(path.join(process.env.OPENCLAW_SOURCE, file)));
+  }
+  const timestampPatch = spawnSync("patch", ["--batch", "--fuzz=0", "-p1", "-i", process.env.TIMESTAMP_PATCH], { cwd: root, encoding: "utf8" });
+  assert.equal(timestampPatch.status, 0, timestampPatch.stdout + timestampPatch.stderr);
+  const pairing = fs.readFileSync(path.join(root, "packages/agent-core/src/harness/session/tool-result-pairing.ts"), "utf8");
+  assert.match(pairing, /Number\.isFinite\(params\.sourceTimestamp\)/);
+  const pendingGuardPath = "src/agents/session-tool-result-guard.ts";
+  fs.writeFileSync(path.join(root, pendingGuardPath), fs.readFileSync(path.join(process.env.OPENCLAW_SOURCE, pendingGuardPath)));
+  const pendingPatch = spawnSync("patch", ["--batch", "--fuzz=0", "-p1", "-i", process.env.PENDING_TOOL_TIMESTAMP_PATCH], { cwd: root, encoding: "utf8" });
+  assert.equal(pendingPatch.status, 0, pendingPatch.stdout + pendingPatch.stderr);
+  assert.match(fs.readFileSync(path.join(root, pendingGuardPath), "utf8"), /sourceTimestamp: entry\.timestamp/);
   console.log("pinned source patch application, caller environment, ownership and path guards: PASS");
 } finally {
   fs.rmSync(root, { recursive: true, force: true });

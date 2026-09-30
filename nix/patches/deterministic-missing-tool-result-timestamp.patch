@@ -1,0 +1,22 @@
+diff --git a/packages/agent-core/src/harness/session/tool-result-pairing.ts b/packages/agent-core/src/harness/session/tool-result-pairing.ts
+--- a/packages/agent-core/src/harness/session/tool-result-pairing.ts
++++ b/packages/agent-core/src/harness/session/tool-result-pairing.ts
+@@ -152,0 +153,1 @@
++  sourceTimestamp?: number;
+@@ -161,1 +162,4 @@
+-    timestamp: Date.now(),
++    timestamp:
++      typeof params.sourceTimestamp === "number" && Number.isFinite(params.sourceTimestamp)
++        ? params.sourceTimestamp
++        : Date.now(),
+diff --git a/src/agents/session-transcript-repair.ts b/src/agents/session-transcript-repair.ts
+--- a/src/agents/session-transcript-repair.ts
++++ b/src/agents/session-transcript-repair.ts
+@@ -154,0 +155,1 @@
++  sourceTimestamp?: number;
+@@ -449,0 +451,5 @@
++          // Transcript repair must not introduce wall-clock time into a persisted history.
++          sourceTimestamp:
++            typeof frame.assistant.timestamp === "number" && Number.isFinite(frame.assistant.timestamp)
++              ? frame.assistant.timestamp
++              : 0,

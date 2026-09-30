@@ -16,6 +16,8 @@ stdenvNoCC.mkDerivation {
   OWNERSHIP_PATCH = ../patches/allow-nix-store-plugin-ownership.patch;
   TRUST_PATCH = ../patches/trust-nix-runtime-plugins.patch;
   RECORDS_PATCH = ../patches/ignore-managed-plugin-records.patch;
+  TIMESTAMP_PATCH = ../patches/deterministic-missing-tool-result-timestamp.patch;
+  PENDING_TOOL_TIMESTAMP_PATCH = ../patches/pending-tool-result-timestamp.patch;
   doCheck = true;
   checkPhase = "node ${../tests/source-patches/check.mjs}";
   installPhase = "${../scripts/empty-install.sh}";

@@ -1,0 +1,29 @@
+--- a/src/agents/session-tool-result-guard.ts
++++ b/src/agents/session-tool-result-guard.ts
+@@ -652 +652 @@
+-  const pending = new Map<string, string | undefined>();
++  const pending = new Map<string, { name: string | undefined; timestamp?: number }>();
+@@ -726 +726,8 @@
+-      pending.set(call.id, call.name);
++      pending.set(call.id, {
++        name: call.name,
++        ...(persistedMessage.role === "assistant" &&
++        typeof persistedMessage.timestamp === "number" &&
++        Number.isFinite(persistedMessage.timestamp)
++          ? { timestamp: persistedMessage.timestamp }
++          : {}),
++      });
+@@ -787 +794 @@
+-      for (const [id, name] of pending.entries()) {
++      for (const [id, entry] of pending.entries()) {
+@@ -790 +797 @@
+-          toolName: name,
++          toolName: entry.name,
+@@ -791,0 +799 @@
++          sourceTimestamp: entry.timestamp,
+@@ -796 +804 @@
+-          toolName: name,
++          toolName: entry.name,
+@@ -855 +863 @@
+-      const toolName = id ? pending.get(id) : undefined;
++      const toolName = id ? pending.get(id)?.name : undefined;
