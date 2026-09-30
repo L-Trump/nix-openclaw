@@ -54,6 +54,7 @@ buildNpmPackageForOpenClaw {
     OPENCLAW_BUNDLED_ACPX = "${bundledAcpx}";
     OPENCLAW_NPM_PACKAGE_ROOT = "node_modules/openclaw";
     OPENCLAW_PATCH_NPM_DIST_SCRIPT = "${../scripts/patch-openclaw-npm-dist.mjs}";
+    OPENCLAW_PATCH_NIX_PLUGIN_TRUST_SCRIPT = "${../scripts/patch-nix-plugin-trust-npm-dist.mjs}";
     STDENV_SETUP = "${stdenv}/setup";
   };
 

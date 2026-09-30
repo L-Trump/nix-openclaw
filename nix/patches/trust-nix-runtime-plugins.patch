@@ -1,0 +1,68 @@
+diff --git a/src/plugins/installed-plugin-record-match.ts b/src/plugins/installed-plugin-record-match.ts
+--- a/src/plugins/installed-plugin-record-match.ts
++++ b/src/plugins/installed-plugin-record-match.ts
+@@ -1,0 +2,2 @@
++import fs from "node:fs";
++import path from "node:path";
+@@ -10,0 +13,4 @@
++import {
++  getOfficialExternalPluginCatalogEntryForPackage,
++  resolveOfficialExternalPluginId,
++} from "./official-external-plugin-catalog.js";
+@@ -14,0 +21,48 @@
++
++// Only explicitly selected, immutable, official catalog packages may replace an
++// npm/ClawHub install record as the source of official plugin trust in Nix mode.
++function isTrustedNixRuntimePlugin(params: {
++  pluginId: string;
++  candidate: PluginCandidate;
++  env: NodeJS.ProcessEnv;
++}): boolean {
++  if (params.env.OPENCLAW_NIX_MODE !== "1" || params.candidate.origin !== "config") {
++    return false;
++  }
++  const packageName = params.candidate.packageName;
++  const entry = getOfficialExternalPluginCatalogEntryForPackage(packageName);
++  if (!entry || resolveOfficialExternalPluginId(entry) !== params.pluginId) {
++    return false;
++  }
++  try {
++    const root = fs.realpathSync.native(params.candidate.rootDir);
++    if (!/^\/nix\/store\/[a-z0-9]{32}-[^/]+$/.test(root)) {
++      return false;
++    }
++    const roots = (params.env.OPENCLAW_NIX_RUNTIME_PLUGIN_ROOTS ?? "")
++      .split(path.delimiter)
++      .filter(Boolean);
++    if (!roots.some((listed) => fs.realpathSync.native(listed) === root)) {
++      return false;
++    }
++    const attestationPath = path.join(root, ".openclaw-nix-runtime-plugin.json");
++    if (fs.realpathSync.native(attestationPath) !== attestationPath) {
++      return false;
++    }
++    const attestation: unknown = JSON.parse(fs.readFileSync(attestationPath, "utf8"));
++    if (!attestation || typeof attestation !== "object") {
++      return false;
++    }
++    const fields = attestation as Record<string, unknown>;
++    return (
++      fields.schemaVersion === 1 &&
++      fields.catalogSource === "official" &&
++      fields.id === params.pluginId &&
++      fields.packageName === packageName &&
++      typeof params.candidate.packageVersion === "string" &&
++      fields.version === params.candidate.packageVersion
++    );
++  } catch {
++    return false;
++  }
++}
+@@ -87,0 +142,7 @@
++  if (isTrustedNixRuntimePlugin(params)) {
++    return {
++      reason: "trusted-official",
++      registryPath: params.registryPath,
++      origin: params.candidate.origin,
++    };
++  }

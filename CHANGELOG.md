@@ -6,6 +6,7 @@ Older repository history is available in git.
 
 ## Unreleased
 
+- Accept explicitly selected, attested official Nix runtime plugins without mutable npm/ClawHub install records; ignore persisted plugin index snapshots in this managed mode so upgrades use the selected Nix store roots. Unmanaged plugin discovery remains unchanged (OpenClaw 2026.9.5).
 - Refresh Nixpkgs, Home Manager, bundled OpenClaw tools and example-plugin inputs, and update the private pnpm 11 runtime to 11.27.0.
 - Refresh Nix inputs and the example plugin lock, and update private source-build pnpm runtimes to 11.27.1 and 12.6.0.
 - Prevent newly published backports from downgrading the selected gateway or macOS app; order stable releases and numeric corrections by version.

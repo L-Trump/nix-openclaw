@@ -154,6 +154,8 @@ let
         "${../patches/allow-nix-store-plugin-ownership.patch}"
       else
         "";
+    PATCH_NIX_RUNTIME_PLUGIN_TRUST = "${../patches/trust-nix-runtime-plugins.patch}";
+    PATCH_IGNORE_MANAGED_PLUGIN_RECORDS = "${../patches/ignore-managed-plugin-records.patch}";
     OPENCLAW_RUNTIME_LAYOUT_SH = "${../scripts/openclaw-stage-runtime.sh}";
     PNPM_BUILD_ENV_SH = "${../scripts/pnpm-build-env.sh}";
     RESTORE_PNPM_STORE_SCRIPT = "${../scripts/restore-pnpm-store.mjs}";

@@ -14,6 +14,8 @@ stdenvNoCC.mkDerivation {
   ];
   OPENCLAW_SOURCE = openclawSource;
   OWNERSHIP_PATCH = ../patches/allow-nix-store-plugin-ownership.patch;
+  TRUST_PATCH = ../patches/trust-nix-runtime-plugins.patch;
+  RECORDS_PATCH = ../patches/ignore-managed-plugin-records.patch;
   doCheck = true;
   checkPhase = "node ${../tests/source-patches/check.mjs}";
   installPhase = "${../scripts/empty-install.sh}";

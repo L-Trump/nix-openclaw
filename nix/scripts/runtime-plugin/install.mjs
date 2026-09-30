@@ -103,6 +103,7 @@ const out = requiredEnv("out");
 const expectedId = requiredEnv("OPENCLAW_RUNTIME_PLUGIN_ID");
 const expectedPackageName = optionalEnv("OPENCLAW_RUNTIME_PLUGIN_PACKAGE_NAME");
 const expectedVersion = optionalEnv("OPENCLAW_RUNTIME_PLUGIN_VERSION");
+const trustedOfficial = optionalEnv("OPENCLAW_RUNTIME_PLUGIN_TRUSTED_OFFICIAL") === "1";
 const expectedCompat = optionalEnv("OPENCLAW_RUNTIME_PLUGIN_COMPAT");
 const expectedPeer = optionalEnv("OPENCLAW_RUNTIME_PLUGIN_PEER_OPENCLAW");
 const runtimeEntriesFile = requiredEnv("OPENCLAW_RUNTIME_PLUGIN_RUNTIME_ENTRIES_FILE");
@@ -118,6 +119,8 @@ fs.cpSync(".", out, { recursive: true, force: true, dereference: false });
 
 const packageJsonPath = path.join(out, "package.json");
 const manifestPath = path.join(out, "openclaw.plugin.json");
+const nixAttestationPath = path.join(out, ".openclaw-nix-runtime-plugin.json");
+fs.rmSync(nixAttestationPath, { force: true });
 if (!fs.existsSync(packageJsonPath)) {
   fail("package.json missing from runtime plugin package root");
 }
@@ -149,6 +152,15 @@ if (expectedVersion && packageVersion !== expectedVersion) {
 }
 if (manifest.id !== expectedId) {
   fail(`plugin id mismatch: expected ${expectedId}, got ${manifest.id}`);
+}
+if (trustedOfficial) {
+  if (!expectedPackageName || !expectedVersion) {
+    fail(`trusted official runtime plugin ${expectedId} requires package name and version metadata`);
+  }
+  fs.writeFileSync(
+    nixAttestationPath,
+    `${JSON.stringify({ schemaVersion: 1, catalogSource: "official", id: expectedId, packageName: expectedPackageName, version: expectedVersion }, null, 2)}\n`,
+  );
 }
 if (expectedCompat && (packageJson.openclaw?.compat?.pluginApi ?? "") !== expectedCompat) {
   fail(

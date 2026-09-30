@@ -18,6 +18,11 @@ if [ -z "${OPENCLAW_PATCH_NPM_DIST_SCRIPT:-}" ] || [ ! -f "$OPENCLAW_PATCH_NPM_D
   exit 1
 fi
 
+if [ -z "${OPENCLAW_PATCH_NIX_PLUGIN_TRUST_SCRIPT:-}" ] || [ ! -f "$OPENCLAW_PATCH_NIX_PLUGIN_TRUST_SCRIPT" ]; then
+  echo "OPENCLAW_PATCH_NIX_PLUGIN_TRUST_SCRIPT is not set or missing" >&2
+  exit 1
+fi
+
 package_root="${OPENCLAW_NPM_PACKAGE_ROOT:-node_modules/openclaw}"
 if [ ! -d "$package_root" ]; then
   echo "OpenClaw npm package root missing: $package_root" >&2
@@ -38,6 +43,8 @@ cp -R node_modules/. "$modules_root/"
 ln -s node_modules/openclaw "$root"
 log_step "patch npm dist"
 OPENCLAW_PACKAGE_ROOT="$root" "$NODE_BIN" "$OPENCLAW_PATCH_NPM_DIST_SCRIPT"
+
+OPENCLAW_PACKAGE_ROOT="$root" "$NODE_BIN" "$OPENCLAW_PATCH_NIX_PLUGIN_TRUST_SCRIPT"
 
 check_no_broken_symlinks() {
   check_root="$1"

@@ -152,6 +152,7 @@ fs.writeFileSync(path.join(process.env.OPENCLAW_PACKAGE_ROOT, "patch-seen"), "pa
           OPENCLAW_NPM_PACKAGE_ROOT: "node_modules/openclaw",
           OPENCLAW_RUNTIME_LAYOUT_SH: path.join(import.meta.dirname, "openclaw-stage-runtime.sh"),
           OPENCLAW_PATCH_NPM_DIST_SCRIPT: patcher,
+          OPENCLAW_PATCH_NIX_PLUGIN_TRUST_SCRIPT: patcher,
           OPENCLAW_BUNDLED_ACPX: acpx,
         },
       }),

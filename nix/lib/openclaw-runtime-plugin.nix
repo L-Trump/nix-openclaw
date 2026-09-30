@@ -113,6 +113,8 @@ let
         OPENCLAW_RUNTIME_PLUGIN_ID = lock.id;
         OPENCLAW_RUNTIME_PLUGIN_PACKAGE_NAME = lock.packageName or "";
         OPENCLAW_RUNTIME_PLUGIN_VERSION = lock.version or "";
+        OPENCLAW_RUNTIME_PLUGIN_TRUSTED_OFFICIAL =
+          if (lock.catalogSource or null) == "official" then "1" else "0";
         OPENCLAW_RUNTIME_PLUGIN_RUNTIME_ENTRIES_FILE = runtimeEntriesFile;
         OPENCLAW_RUNTIME_PLUGIN_BUNDLED_PACKAGE_ROOTS_FILE = bundledPackageRootsFile;
         OPENCLAW_RUNTIME_PLUGIN_HAS_RUNTIME_DEPENDENCIES =
@@ -140,6 +142,7 @@ let
         inherit (lock) id;
         source = lock.selectedSource or "npm";
         loadPath = drv;
+        trustedOfficial = (lock.catalogSource or null) == "official";
       }
       // lib.optionalAttrs ((lock.packageName or null) != null) {
         packageName = lock.packageName;

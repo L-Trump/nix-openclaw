@@ -59,6 +59,17 @@ try {
   assert.equal(context.findCandidateBlockIssue(params("/nix/store/plugin", "1")).reason, "path_stat_failed");
   assert.equal(context.shouldRejectHardlinkedPluginFiles(params("/nix/store/plugin", "1")), false);
   assert.equal(context.shouldRejectHardlinkedPluginFiles(params("/tmp/plugin", "1")), true);
+  for (const name of ["installed-plugin-record-match.ts", "installed-plugin-index-record-reader.ts", "plugin-registry-snapshot.ts"]) {
+    fs.writeFileSync(path.join(root, "src/plugins", name), fs.readFileSync(path.join(process.env.OPENCLAW_SOURCE, "src/plugins", name)));
+  }
+  for (const patchFile of [process.env.TRUST_PATCH, process.env.RECORDS_PATCH]) {
+    const result = spawnSync("patch", ["--batch", "--fuzz=0", "-p1", "-i", patchFile], { cwd: root, encoding: "utf8" });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+  }
+  const trust = fs.readFileSync(path.join(root, "src/plugins/installed-plugin-record-match.ts"), "utf8");
+  const records = fs.readFileSync(path.join(root, "src/plugins/installed-plugin-index-record-reader.ts"), "utf8");
+  assert.match(trust, /function isTrustedNixRuntimePlugin/);
+  assert.match(records, /function managedNixPluginRegistry/);
   console.log("pinned source patch application, caller environment, ownership and path guards: PASS");
 } finally {
   fs.rmSync(root, { recursive: true, force: true });

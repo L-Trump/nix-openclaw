@@ -109,6 +109,7 @@ let
         denyList = existingDenyList;
       };
       disablePersistedPluginRegistry = runtimePluginConfig.loadPaths != [ ];
+      trustedRuntimePluginRoots = lib.concatStringsSep ":" runtimePluginConfig.trustedLoadPaths;
       generatedPluginConfig = lib.recursiveUpdate (lib.optionalAttrs
         (runtimePluginConfig.loadPaths != [ ])
         {
@@ -207,6 +208,7 @@ let
         fi
 
         ${environment.renderExports runtimeEnvAll}
+        export OPENCLAW_NIX_RUNTIME_PLUGIN_ROOTS=${lib.escapeShellArg trustedRuntimePluginRoots}
 
         exec "${gatewayRuntimePackage}/bin/openclaw" "$@"
       '';

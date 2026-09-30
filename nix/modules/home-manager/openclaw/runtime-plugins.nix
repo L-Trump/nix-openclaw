@@ -113,6 +113,9 @@ let
     {
       inherit packages;
       loadPaths = map toString packages;
+      trustedLoadPaths = map toString (
+        lib.filter (package: package.openclawRuntimePlugin.trustedOfficial or false) packages
+      );
       config = lib.recursiveUpdate entriesConfig allowConfig;
       assertions = [
         {
