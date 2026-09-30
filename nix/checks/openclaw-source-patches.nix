@@ -17,6 +17,7 @@ stdenvNoCC.mkDerivation {
   TRUST_PATCH = ../patches/trust-nix-runtime-plugins.patch;
   RECORDS_PATCH = ../patches/ignore-managed-plugin-records.patch;
   TIMESTAMP_PATCH = ../patches/deterministic-missing-tool-result-timestamp.patch;
+  AGGREGATE_BUDGET_PATCH = ../patches/fix-tool-result-aggregate-budget.patch;
   PENDING_TOOL_TIMESTAMP_PATCH = ../patches/pending-tool-result-timestamp.patch;
   doCheck = true;
   checkPhase = "node ${../tests/source-patches/check.mjs}";

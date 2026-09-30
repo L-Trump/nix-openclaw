@@ -58,6 +58,9 @@ buildNpmPackageForOpenClaw {
     OPENCLAW_PATCH_MISSING_TOOL_TIMESTAMP_SCRIPT = "${
       ../scripts/patch-missing-tool-timestamp-npm-dist.mjs
     }";
+    OPENCLAW_PATCH_AGGREGATE_BUDGET_SCRIPT = "${
+      ../scripts/patch-tool-result-aggregate-budget-npm-dist.mjs
+    }";
     OPENCLAW_PATCH_PENDING_TOOL_TIMESTAMP_SCRIPT = "${
       ../scripts/patch-pending-tool-timestamp-npm-dist.mjs
     }";

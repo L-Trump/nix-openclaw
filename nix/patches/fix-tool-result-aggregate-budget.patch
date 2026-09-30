@@ -1,0 +1,30 @@
+--- a/src/agents/embedded-agent-runner/tool-result-truncation.ts
++++ b/src/agents/embedded-agent-runner/tool-result-truncation.ts
+@@ -24,0 +25 @@
++import { TOOL_RESULT_CHARS_PER_TOKEN_ESTIMATE } from "./tool-result-char-estimator.js";
+@@ -44,0 +46 @@
++const AGGREGATE_REDUCTION_QUANTUM_RATIO = 0.2;
+@@ -508 +510 @@
+-    contextWindowTokens * 4 * AGGREGATE_TOOL_RESULT_CONTEXT_SHARE,
++    contextWindowTokens * TOOL_RESULT_CHARS_PER_TOKEN_ESTIMATE * AGGREGATE_TOOL_RESULT_CONTEXT_SHARE,
+@@ -728,0 +731 @@
++    aggregateReductionQuantumRatio: AGGREGATE_REDUCTION_QUANTUM_RATIO,
+@@ -1152,0 +1156 @@
++  aggregateReductionQuantumRatio?: number;
+@@ -1190 +1194,9 @@
+-  let remainingReduction = totalChars - params.aggregateBudgetChars;
++  // Leave headroom in live projections to avoid repeatedly changing their prompt prefix.
++  // Persisted overflow recovery remains exact and tiny explicit caps stay exact.
++  const overflowChars = totalChars - params.aggregateBudgetChars;
++  const quantum =
++    params.aggregateReductionQuantumRatio !== undefined &&
++    params.aggregateBudgetChars >= MIN_KEEP_CHARS
++      ? Math.max(1, Math.ceil(params.aggregateBudgetChars * params.aggregateReductionQuantumRatio))
++      : 1;
++  let remainingReduction = Math.ceil(overflowChars / quantum) * quantum;
+@@ -1338,0 +1351 @@
++  aggregateReductionQuantumRatio?: number;
+@@ -1406,0 +1420 @@
++    aggregateReductionQuantumRatio: params.aggregateReductionQuantumRatio,
+@@ -1495,0 +1510 @@
++    aggregateReductionQuantumRatio: AGGREGATE_REDUCTION_QUANTUM_RATIO,

@@ -154,6 +154,7 @@ fs.writeFileSync(path.join(process.env.OPENCLAW_PACKAGE_ROOT, "patch-seen"), "pa
           OPENCLAW_PATCH_NPM_DIST_SCRIPT: patcher,
           OPENCLAW_PATCH_NIX_PLUGIN_TRUST_SCRIPT: patcher,
           OPENCLAW_PATCH_MISSING_TOOL_TIMESTAMP_SCRIPT: patcher,
+          OPENCLAW_PATCH_AGGREGATE_BUDGET_SCRIPT: patcher,
           OPENCLAW_PATCH_PENDING_TOOL_TIMESTAMP_SCRIPT: patcher,
           OPENCLAW_BUNDLED_ACPX: acpx,
         },

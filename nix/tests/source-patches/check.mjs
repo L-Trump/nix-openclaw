@@ -78,6 +78,14 @@ try {
   assert.equal(timestampPatch.status, 0, timestampPatch.stdout + timestampPatch.stderr);
   const pairing = fs.readFileSync(path.join(root, "packages/agent-core/src/harness/session/tool-result-pairing.ts"), "utf8");
   assert.match(pairing, /Number\.isFinite\(params\.sourceTimestamp\)/);
+  const aggregateSourcePath = "src/agents/embedded-agent-runner/tool-result-truncation.ts";
+  fs.mkdirSync(path.dirname(path.join(root, aggregateSourcePath)), { recursive: true });
+  fs.writeFileSync(path.join(root, aggregateSourcePath), fs.readFileSync(path.join(process.env.OPENCLAW_SOURCE, aggregateSourcePath)));
+  const aggregatePatch = spawnSync("patch", ["--batch", "--fuzz=0", "-p1", "-i", process.env.AGGREGATE_BUDGET_PATCH], { cwd: root, encoding: "utf8" });
+  assert.equal(aggregatePatch.status, 0, aggregatePatch.stdout + aggregatePatch.stderr);
+  const aggregateSource = fs.readFileSync(path.join(root, aggregateSourcePath), "utf8");
+  assert.match(aggregateSource, /contextWindowTokens \* TOOL_RESULT_CHARS_PER_TOKEN_ESTIMATE \* AGGREGATE_TOOL_RESULT_CONTEXT_SHARE/);
+  assert.match(aggregateSource, /aggregateReductionQuantumRatio: AGGREGATE_REDUCTION_QUANTUM_RATIO/);
   const pendingGuardPath = "src/agents/session-tool-result-guard.ts";
   fs.writeFileSync(path.join(root, pendingGuardPath), fs.readFileSync(path.join(process.env.OPENCLAW_SOURCE, pendingGuardPath)));
   const pendingPatch = spawnSync("patch", ["--batch", "--fuzz=0", "-p1", "-i", process.env.PENDING_TOOL_TIMESTAMP_PATCH], { cwd: root, encoding: "utf8" });
