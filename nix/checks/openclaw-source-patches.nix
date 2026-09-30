@@ -20,6 +20,7 @@ stdenvNoCC.mkDerivation {
   AGGREGATE_BUDGET_PATCH = ../patches/fix-tool-result-aggregate-budget.patch;
   SCNET_RETRY_PATCH = ../patches/scnet-headerless-429-retry.patch;
   SESSIONS_SEND_PATCH = ../patches/sessions-send-empty-selector.patch;
+  CONTEXT_ENGINE_PATCH = ../patches/context-engine-owned-tool-results.patch;
   PENDING_TOOL_TIMESTAMP_PATCH = ../patches/pending-tool-result-timestamp.patch;
   doCheck = true;
   checkPhase = "node ${../tests/source-patches/check.mjs}";

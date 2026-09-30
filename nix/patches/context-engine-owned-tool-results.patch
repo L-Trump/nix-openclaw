@@ -1,0 +1,98 @@
+--- a/src/agents/embedded-agent-runner/tool-result-context-guard.ts
++++ b/src/agents/embedded-agent-runner/tool-result-context-guard.ts
+@@ -4,0 +5 @@
++  AssembleResult,
+@@ -312,0 +314,4 @@
++  onAssemblyStateChange?: (state: {
++    succeeded: boolean;
++    promptAuthority: NonNullable<AssembleResult["promptAuthority"]>;
++  }) => void;
+@@ -327,0 +333 @@
++  let lastPromptAuthority: NonNullable<AssembleResult["promptAuthority"]> = "assembled";
+@@ -350,0 +357 @@
++    params.onAssemblyStateChange?.({ succeeded: false, promptAuthority: "assembled" });
+@@ -365,0 +373,3 @@
++      if (lastAssembledView) {
++        params.onAssemblyStateChange?.({ succeeded: true, promptAuthority: lastPromptAuthority });
++      }
+@@ -440,0 +451,2 @@
++      lastPromptAuthority = assembled.promptAuthority ?? "assembled";
++      params.onAssemblyStateChange?.({ succeeded: true, promptAuthority: lastPromptAuthority });
+@@ -463,0 +476 @@
++  isContextEngineAssemblyAuthoritative?: () => boolean;
+@@ -478,0 +492,8 @@
++    if (params.isContextEngineAssemblyAuthoritative?.()) {
++      // This assembled view was admitted; a later failed assembly should only
++      // precheck results appended after its fence, not replay old pressure.
++      if (params.midTurnPrecheck?.enabled) {
++        lastSeenLength = sourceMessages.length;
++      }
++      return sourceMessages;
++    }
+--- a/src/agents/embedded-agent-runner/run/attempt-setup.ts
++++ b/src/agents/embedded-agent-runner/run/attempt-setup.ts
+@@ -9 +9 @@
+-import type { ContextEngine } from "../../../context-engine/types.js";
++import type { AssembleResult, ContextEngine } from "../../../context-engine/types.js";
+@@ -283,0 +284,4 @@
++  let contextEngineLoopAssemblyState: {
++    succeeded: boolean;
++    promptAuthority: NonNullable<AssembleResult["promptAuthority"]>;
++  } | null = null;
+@@ -344,0 +349,3 @@
++      onAssemblyStateChange: (state) => {
++        contextEngineLoopAssemblyState = state;
++      },
+@@ -350,0 +358,3 @@
++    isContextEngineAssemblyAuthoritative: () =>
++      contextEngineLoopAssemblyState?.succeeded === true &&
++      contextEngineLoopAssemblyState.promptAuthority !== "preassembly_may_overflow",
+--- a/src/agents/embedded-agent-runner/run/attempt-prompt-preflight.ts
++++ b/src/agents/embedded-agent-runner/run/attempt-prompt-preflight.ts
+@@ -60,0 +61 @@
++  contextEngineOwnsCompaction?: boolean;
+@@ -86,0 +88,11 @@
++    // An owning engine must see the full persisted history. Route a failed
++    // preassembly estimate through engine compaction, never a transcript edit.
++    if (input.contextEngineOwnsCompaction) {
++      const preflightRecovery = {
++        route: "compact_only" as const,
++        source: "mid-turn" as const,
++        ...buildPreflightRecoveryBudgetSnapshot(request),
++      };
++      logMidTurnPrecheck("compact_only", "engineOwnsCompaction=true");
++      return { preflightRecovery, promptError: new Error(PREEMPTIVE_OVERFLOW_ERROR_TEXT) };
++    }
+--- a/src/agents/embedded-agent-runner/run/attempt-prompt-phase.ts
++++ b/src/agents/embedded-agent-runner/run/attempt-prompt-phase.ts
+@@ -135,0 +136 @@
++      contextEngineOwnsCompaction: activeContextEngine?.info.ownsCompaction === true,
+--- a/src/agents/embedded-agent-runner/run/overflow-context-recovery.ts
++++ b/src/agents/embedded-agent-runner/run/overflow-context-recovery.ts
+@@ -339 +339,4 @@
+-      if (preflightRecovery?.route === "compact_then_truncate") {
++      if (
++        preflightRecovery?.route === "compact_then_truncate" &&
++        input.contextEngine.info.ownsCompaction !== true
++      ) {
+@@ -380 +383,7 @@
+-  if (!parkedWorkBlocksContinuation && !input.state.toolResultTruncationAttempted) {
++  // An owning context engine chooses the recoverable window. Even after an
++  // unsuccessful compaction, never persistently truncate its session transcript.
++  if (
++    !parkedWorkBlocksContinuation &&
++    input.contextEngine.info.ownsCompaction !== true &&
++    !input.state.toolResultTruncationAttempted
++  ) {
+--- a/src/agents/embedded-agent-runner/tool-result-truncation.ts
++++ b/src/agents/embedded-agent-runner/tool-result-truncation.ts
+@@ -705,0 +706 @@
++  projectionOptions?: { protectTrailingToolResults?: boolean },
+@@ -732 +733,2 @@
+-    protectTrailingToolResults: Boolean(projectionState),
++    protectTrailingToolResults:
++      projectionOptions?.protectTrailingToolResults ?? Boolean(projectionState),
+--- a/src/agents/embedded-agent-runner/run/attempt-prompt-submit.ts
++++ b/src/agents/embedded-agent-runner/run/attempt-prompt-submit.ts
+@@ -139,0 +140 @@
++          { protectTrailingToolResults: false },

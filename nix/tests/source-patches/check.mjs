@@ -99,6 +99,23 @@ try {
   const schema = fs.readFileSync(path.join(root, sessionsSendPath), "utf8");
   assert.match(schema, /label: Type.Optional\(Type.String\(\{ minLength: 0/);
   assert.match(schema, /agentId: Type.Optional\(Type.String\(\{ minLength: 0/);
+  const contextPaths = [
+    "src/agents/embedded-agent-runner/tool-result-context-guard.ts",
+    ...["attempt-setup", "attempt-prompt-preflight", "attempt-prompt-phase", "overflow-context-recovery", "attempt-prompt-submit"].map(
+      (name) => `src/agents/embedded-agent-runner/run/${name}.ts`,
+    ),
+  ];
+  for (const file of contextPaths) {
+    fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+    fs.writeFileSync(path.join(root, file), fs.readFileSync(path.join(process.env.OPENCLAW_SOURCE, file)));
+  }
+  const contextPatch = spawnSync("patch", ["--batch", "--fuzz=0", "-p1", "-i", process.env.CONTEXT_ENGINE_PATCH], { cwd: root, encoding: "utf8" });
+  assert.equal(contextPatch.status, 0, contextPatch.stdout + contextPatch.stderr);
+  const guard = fs.readFileSync(path.join(root, contextPaths[0]), "utf8");
+  const recovery = fs.readFileSync(path.join(root, "src/agents/embedded-agent-runner/run/overflow-context-recovery.ts"), "utf8");
+  assert.match(guard, /isContextEngineAssemblyAuthoritative\?\.\(\)/);
+  assert.match(recovery, /input\.contextEngine\.info\.ownsCompaction !== true/);
+  assert.match(fs.readFileSync(path.join(root, aggregateSourcePath), "utf8"), /projectionOptions\?\.protectTrailingToolResults/);
   const pendingGuardPath = "src/agents/session-tool-result-guard.ts";
   fs.writeFileSync(path.join(root, pendingGuardPath), fs.readFileSync(path.join(process.env.OPENCLAW_SOURCE, pendingGuardPath)));
   const pendingPatch = spawnSync("patch", ["--batch", "--fuzz=0", "-p1", "-i", process.env.PENDING_TOOL_TIMESTAMP_PATCH], { cwd: root, encoding: "utf8" });

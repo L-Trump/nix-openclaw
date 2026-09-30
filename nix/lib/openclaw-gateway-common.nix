@@ -162,6 +162,7 @@ let
     PATCH_TOOL_RESULT_AGGREGATE_BUDGET = "${../patches/fix-tool-result-aggregate-budget.patch}";
     PATCH_SCNET_HEADERLESS_429_RETRY = "${../patches/scnet-headerless-429-retry.patch}";
     PATCH_SESSIONS_SEND_EMPTY_SELECTOR = "${../patches/sessions-send-empty-selector.patch}";
+    PATCH_CONTEXT_ENGINE_OWNED_TOOL_RESULTS = "${../patches/context-engine-owned-tool-results.patch}";
     PATCH_PENDING_TOOL_RESULT_TIMESTAMP = "${../patches/pending-tool-result-timestamp.patch}";
     OPENCLAW_RUNTIME_LAYOUT_SH = "${../scripts/openclaw-stage-runtime.sh}";
     PNPM_BUILD_ENV_SH = "${../scripts/pnpm-build-env.sh}";
