@@ -167,6 +167,7 @@ let
     PATCH_REPLAY_SAFE_IDLE_RETRY = "${../patches/replay-safe-idle-retry.patch}";
     PATCH_RHCG_OPENAI_COMPAT = "${../patches/rhcg-openai-compatible-payload.patch}";
     PATCH_OPENCODE_GO_DEEPSEEK_FLASH = "${../patches/opencode-go-deepseek-flash-thinking.patch}";
+    PATCH_MINIMAX_M31_FLASH_EFFORT = "${../patches/minimax-m31-flash-effort.patch}";
     PATCH_PENDING_TOOL_RESULT_TIMESTAMP = "${../patches/pending-tool-result-timestamp.patch}";
     PATCH_FEISHU_SESSION_STREAMING = "${../patches/feishu-session-owned-streaming.patch}";
     OPENCLAW_RUNTIME_LAYOUT_SH = "${../scripts/openclaw-stage-runtime.sh}";

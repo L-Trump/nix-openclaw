@@ -1,0 +1,34 @@
+--- a/extensions/minimax/thinking.ts
++++ b/extensions/minimax/thinking.ts
+@@ -5,0 +6 @@
++const M31_FLASH_EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
+@@ -9,0 +11,6 @@
++  if (/^MiniMax-M3\.1-Flash-Preview$/i.test(modelId)) {
++    return {
++      levels: M31_FLASH_EFFORT_LEVELS.map((id) => ({ id })),
++      defaultLevel: "max",
++    };
++  }
+--- a/src/llm/providers/stream-wrappers/minimax.ts
++++ b/src/llm/providers/stream-wrappers/minimax.ts
+@@ -57,0 +58,10 @@
++    const isM31Flash = /^MiniMax-M3\.1-Flash-Preview$/i.test(model.id);
++    // M3.1 requires adaptive thinking; strength is sent via output_config.effort.
++    const requestedLevel = thinkingLevel ?? "max";
++    if (isM31Flash && requestedLevel === "off") {
++      throw new Error("MiniMax-M3.1-Flash-Preview does not support thinking off");
++    }
++    const effort = requestedLevel === "adaptive" ? "max" : requestedLevel;
++    if (isM31Flash && !["low", "medium", "high", "xhigh", "max"].includes(effort)) {
++      throw new Error(`MiniMax-M3.1-Flash-Preview does not support thinking level ${effort}`);
++    }
+@@ -59,0 +70,9 @@
++      if (isM31Flash) {
++        payload.thinking = { type: "adaptive" };
++        payload.output_config = { ...asOptionalRecord(payload.output_config), effort };
++        const maxTokens = resolvePositiveMaxTokens(options?.maxTokens);
++        if (maxTokens !== undefined) {
++          payload.max_tokens = maxTokens;
++        }
++        return;
++      }

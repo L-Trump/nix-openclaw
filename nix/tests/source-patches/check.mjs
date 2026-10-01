@@ -149,6 +149,15 @@ try {
   const opencodePatch = spawnSync("patch", ["--batch", "--fuzz=0", "-p1", "-i", process.env.OPENCODE_GO_DEEPSEEK_FLASH_PATCH], { cwd: root, encoding: "utf8" });
   assert.equal(opencodePatch.status, 0, opencodePatch.stdout + opencodePatch.stderr);
   assert.match(fs.readFileSync(path.join(root, opencodeGoPath), "utf8"), /model\.id === "deepseek-v4-pro" \|\| model\.id === "deepseek-flash"/);
+  const minimaxFiles = ["extensions/minimax/thinking.ts", "src/llm/providers/stream-wrappers/minimax.ts"];
+  for (const file of minimaxFiles) {
+    fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+    fs.writeFileSync(path.join(root, file), fs.readFileSync(path.join(process.env.OPENCLAW_SOURCE, file)));
+  }
+  const minimaxPatch = spawnSync("patch", ["--batch", "--fuzz=0", "-p1", "-i", process.env.MINIMAX_M31_FLASH_EFFORT_PATCH], { cwd: root, encoding: "utf8" });
+  assert.equal(minimaxPatch.status, 0, minimaxPatch.stdout + minimaxPatch.stderr);
+  assert.match(fs.readFileSync(path.join(root, minimaxFiles[0]), "utf8"), /M31_FLASH_EFFORT_LEVELS/);
+  assert.match(fs.readFileSync(path.join(root, minimaxFiles[1]), "utf8"), /payload\.output_config =/);
   const pendingGuardPath = "src/agents/session-tool-result-guard.ts";
   fs.writeFileSync(path.join(root, pendingGuardPath), fs.readFileSync(path.join(process.env.OPENCLAW_SOURCE, pendingGuardPath)));
   const pendingPatch = spawnSync("patch", ["--batch", "--fuzz=0", "-p1", "-i", process.env.PENDING_TOOL_TIMESTAMP_PATCH], { cwd: root, encoding: "utf8" });

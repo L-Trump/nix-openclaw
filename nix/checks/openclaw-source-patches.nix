@@ -25,6 +25,7 @@ stdenvNoCC.mkDerivation {
   IDLE_RETRY_PATCH = ../patches/replay-safe-idle-retry.patch;
   RHCG_PAYLOAD_PATCH = ../patches/rhcg-openai-compatible-payload.patch;
   OPENCODE_GO_DEEPSEEK_FLASH_PATCH = ../patches/opencode-go-deepseek-flash-thinking.patch;
+  MINIMAX_M31_FLASH_EFFORT_PATCH = ../patches/minimax-m31-flash-effort.patch;
   PENDING_TOOL_TIMESTAMP_PATCH = ../patches/pending-tool-result-timestamp.patch;
   FEISHU_STREAMING_PATCH = ../patches/feishu-session-owned-streaming.patch;
   doCheck = true;

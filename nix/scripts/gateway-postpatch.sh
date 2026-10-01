@@ -56,6 +56,10 @@ if [ -n "${PATCH_OPENCODE_GO_DEEPSEEK_FLASH:-}" ]; then
   patch -p1 < "$PATCH_OPENCODE_GO_DEEPSEEK_FLASH"
 fi
 
+if [ -n "${PATCH_MINIMAX_M31_FLASH_EFFORT:-}" ]; then
+  patch -p1 < "$PATCH_MINIMAX_M31_FLASH_EFFORT"
+fi
+
 if [ -n "${PATCH_PENDING_TOOL_RESULT_TIMESTAMP:-}" ]; then
   patch -p1 < "$PATCH_PENDING_TOOL_RESULT_TIMESTAMP"
 fi

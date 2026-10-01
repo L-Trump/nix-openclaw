@@ -111,6 +111,9 @@
               opencode-go-deepseek-flash = pkgs.callPackage ./nix/checks/openclaw-opencode-go-deepseek-flash.nix {
                 openclawGateway = packageSetStable.openclaw-gateway;
               };
+              minimax-m31-flash = pkgs.callPackage ./nix/checks/openclaw-minimax-m31-flash.nix {
+                openclawGateway = packageSetStable.openclaw-gateway;
+              };
               source-override-render = pkgs.callPackage ./nix/checks/openclaw-default-instance.nix {
                 includeSourceOverrideChecks = true;
               };
